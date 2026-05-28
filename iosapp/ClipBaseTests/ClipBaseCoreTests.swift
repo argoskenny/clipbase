@@ -113,4 +113,87 @@ final class ClipBaseCoreTests: XCTestCase {
 
         XCTAssertTrue(csv.contains(",Token,\"'  =IMPORTXML(\"\"https://example.com\"\")\""))
     }
+
+    func testNativeLoginPayloadAndInvalidCredentialMessage() async throws {
+        MockURLProtocol.requestHandler = { request in
+            let body = try XCTUnwrap(request.httpBodyStream.flatMap(Self.readStream) ?? request.httpBody)
+            let payload = try JSONSerialization.jsonObject(with: body) as? [String: String]
+
+            XCTAssertEqual(request.url?.absoluteString, "https://clipbase.thelonesomeera.com/api/login")
+            XCTAssertEqual(payload?["username"], "operator")
+            XCTAssertEqual(payload?["password"], "wrong")
+            XCTAssertEqual(payload?["tokenMode"], "bearer")
+            XCTAssertEqual(payload?["client"], "native")
+
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 401,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(#"{"error":"帳號或密碼不正確"}"#.utf8))
+        }
+        defer {
+            MockURLProtocol.requestHandler = nil
+        }
+
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [MockURLProtocol.self]
+        let client = SyncClient(session: URLSession(configuration: configuration))
+
+        do {
+            _ = try await client.login(baseURL: ClipBaseSnapshot.defaultBaseURL, username: "operator", password: "wrong")
+            XCTFail("Login should fail for invalid credentials")
+        } catch let error as SyncClientError {
+            XCTAssertEqual(error.localizedDescription, "帳號或密碼不正確")
+        }
+    }
+
+    private static func readStream(_ stream: InputStream) -> Data {
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        let bufferSize = 1024
+        var buffer = [UInt8](repeating: 0, count: bufferSize)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: bufferSize)
+            if count > 0 {
+                data.append(buffer, count: count)
+            } else {
+                break
+            }
+        }
+        return data
+    }
+}
+
+private final class MockURLProtocol: URLProtocol {
+    static var requestHandler: ((URLRequest) throws -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        true
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let requestHandler = Self.requestHandler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+
+        do {
+            let (response, data) = try requestHandler(request)
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: data)
+            client?.urlProtocolDidFinishLoading(self)
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
+        }
+    }
+
+    override func stopLoading() {
+    }
 }

@@ -17,8 +17,8 @@ final class SyncClient: SyncServicing {
 
     func login(baseURL: String, username: String, password: String) async throws -> LoginResponse {
         var request = try request(baseURL: baseURL, path: "/api/login", method: "POST")
-        request.httpBody = try encoder.encode(LoginRequest(username: username, password: password, tokenMode: "bearer"))
-        let data = try await perform(request)
+        request.httpBody = try encoder.encode(LoginRequest(username: username, password: password, tokenMode: "bearer", client: "native"))
+        let data = try await perform(request, treatsUnauthorizedAsLoginFailure: true)
         return try decoder.decode(LoginResponse.self, from: data)
     }
 
@@ -50,12 +50,16 @@ final class SyncClient: SyncServicing {
         return request
     }
 
-    private func perform(_ request: URLRequest) async throws -> Data {
+    private func perform(_ request: URLRequest, treatsUnauthorizedAsLoginFailure: Bool = false) async throws -> Data {
         let (data, response) = try await session.data(for: request)
         guard let http = response as? HTTPURLResponse else {
             throw SyncClientError.server("伺服器沒有回應")
         }
         if http.statusCode == 401 {
+            if treatsUnauthorizedAsLoginFailure {
+                let payload = try? decoder.decode(APIErrorPayload.self, from: data)
+                throw SyncClientError.server(payload?.error ?? "帳號或密碼不正確")
+            }
             throw SyncClientError.unauthorized
         }
         guard (200..<300).contains(http.statusCode) else {
@@ -70,6 +74,7 @@ private struct LoginRequest: Encodable {
     var username: String
     var password: String
     var tokenMode: String
+    var client: String
 }
 
 private struct SyncRequest: Encodable {
