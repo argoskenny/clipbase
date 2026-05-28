@@ -1,0 +1,94 @@
+# macOS / editor noise
+.DS_Store
+.AppleDouble
+.LSOverride
+._*
+*.swp
+*.swo
+*~
+.idea/
+.vscode/
+
+# Logs and local diagnostics
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.trace
+
+# Local environment and secrets
+.env
+.env.*
+!.env.example
+!.env.*.example
+.codex/deploy.json
+
+# Web app: React + Vite + Express + SQLite
+web/node_modules/
+web/dist/
+web/data/
+web/output/
+web/.playwright-cli/
+web/coverage/
+web/.vite/
+web/.vite-temp/
+web/*.db
+web/*.db-*
+web/*.sqlite
+web/*.sqlite3
+
+# macOS app: SwiftPM / app bundles / temporary packaging output
+macapp/.build/
+macapp/.swiftpm/xcode/package.xcworkspace/xcuserdata/
+macapp/.swiftpm/xcode/xcuserdata/
+macapp/DerivedData/
+macapp/build/
+macapp/dist/
+macapp/tmp/
+macapp/*.app
+macapp/*.dSYM
+macapp/*.xcarchive
+
+# iOS app: Xcode / SwiftPM / simulator and archive output
+iosapp/.build/
+iosapp/.swiftpm/xcode/package.xcworkspace/xcuserdata/
+iosapp/.swiftpm/xcode/xcuserdata/
+iosapp/DerivedData/
+iosapp/build/
+iosapp/*.app
+iosapp/*.ipa
+iosapp/*.dSYM
+iosapp/*.xcarchive
+iosapp/*.xcresult
+iosapp/*.moved-aside
+iosapp/*.hmap
+iosapp/*.dSYM.zip
+iosapp/*.dSYM.tar.gz
+
+# Xcode user-specific state
+*.xcuserstate
+xcuserdata/
+*.xccheckout
+*.xcscmblueprint
+
+# CocoaPods / Carthage / Accio, if the future iOS app adopts them
+iosapp/Pods/
+iosapp/Carthage/Build/
+iosapp/Dependencies/
+.build/
+
+# Test and coverage artifacts
+coverage/
+.nyc_output/
+test-results/
+playwright-report/
+
+# Runtime databases and generated exports
+*.db
+*.db-*
+*.sqlite
+*.sqlite3
+*.sqlite3-*
+output/
+tmp/
