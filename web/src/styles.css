@@ -98,17 +98,23 @@ button:disabled {
   width: 48px;
   height: 48px;
   flex: 0 0 auto;
-  display: grid;
-  place-items: center;
+  overflow: hidden;
   border-radius: var(--radius);
-  color: #ffffff;
-  background: linear-gradient(135deg, var(--accent), #0b665f);
+  background: #17211f;
   box-shadow: 0 12px 28px rgba(13, 148, 136, 0.22);
 }
 
 .app-mark {
   width: 42px;
   height: 42px;
+}
+
+.login-mark img,
+.app-mark img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
 }
 
 .login-panel h1,

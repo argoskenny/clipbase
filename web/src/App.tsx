@@ -6,7 +6,6 @@ import {
   Eye,
   FileText,
   FileUp,
-  KeyRound,
   ListPlus,
   LogOut,
   Plus,
@@ -154,7 +153,7 @@ export function App() {
       <header className="topbar">
         <div className="brand-lockup">
           <div className="app-mark" aria-hidden="true">
-            <Clipboard size={22} />
+            <img src="/appicon.png" alt="" />
           </div>
           <div>
             <h1>ClipBase</h1>
@@ -251,7 +250,7 @@ function LoginPage({ onLogin }: { onLogin: (username: string, password: string) 
       <form className="login-panel" onSubmit={submit}>
         <div className="login-heading">
           <div className="login-mark">
-            <KeyRound size={24} />
+            <img src="/appicon.png" alt="" />
           </div>
           <div>
             <h1>ClipBase</h1>
