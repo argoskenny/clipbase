@@ -1,13 +1,24 @@
-# ClipBase macOS App
+# ClipBase macOS
 
-This directory contains the original SwiftPM macOS app.
+Native SwiftUI macOS client for ClipBase.
 
-Useful commands:
+## Build
 
 ```bash
 swift build
-./scripts/build_app.sh
 ```
 
-The Web implementation lives in `../web`.
+## Run
 
+```bash
+./script/build_and_run.sh
+```
+
+The app uses the ClipBase sync API with bearer tokens:
+
+- `POST /api/login` with `tokenMode: "bearer"`
+- `POST /api/sync`
+- `GET /api/sync?since=...`
+
+Session tokens are stored in Keychain. Clip data is stored locally in
+Application Support with stable IDs, `updatedAt`, `deletedAt`, and tombstones.

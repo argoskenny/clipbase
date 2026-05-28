@@ -8,14 +8,14 @@ This repository contains ClipBase across multiple platforms. Treat this file as 
 clipbase/
   web/       # Web implementation: React + Vite + Express + SQLite
   macapp/    # Original macOS SwiftPM app
-  iosapp/    # Reserved for future iOS implementation
+  iosapp/    # Native iOS SwiftUI app
 ```
 
 Platform ownership:
 
 - `web/`: source of truth for current full product behavior, API, auth, CSV import/export, and sync protocol.
 - `macapp/`: existing SwiftUI macOS app. When updating it, preserve native macOS UX while matching the cross-platform data/sync rules.
-- `iosapp/`: future iOS implementation. Use the Web technical reference and sync API docs before adding code.
+- `iosapp/`: native SwiftUI iOS implementation. Keep it aligned with the Web technical reference and sync API docs.
 
 ## Required Reading
 
@@ -119,17 +119,41 @@ The original macOS app currently stores local state via `UserDefaults`. If addin
 
 ## iOS Platform
 
-`iosapp/` is reserved for future iOS implementation.
+The iOS app is an Xcode SwiftUI project in `iosapp/`.
 
-Before creating an iOS app, use:
+Commands:
+
+```bash
+cd iosapp
+xcodebuild -project ClipBase.xcodeproj -scheme ClipBase -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
+xcodebuild -project ClipBase.xcodeproj -scheme ClipBase -destination 'platform=iOS Simulator,name=iPhone 17' test CODE_SIGNING_ALLOWED=NO
+```
+
+If the named simulator is unavailable, replace `iPhone 17` with an installed iOS Simulator.
+
+Important files:
+
+```txt
+iosapp/ClipBase.xcodeproj
+iosapp/ClipBase/*.swift
+iosapp/ClipBase/Assets.xcassets
+iosapp/ClipBaseTests/*.swift
+```
+
+Before changing iOS product or sync behavior, use:
 
 - `web/docs/web-app-technical-reference.md`
 - `docs/sync-api.md`
 
-Recommended iOS storage:
+Current iOS storage:
+
+- A JSON sync snapshot in Application Support for the first native implementation.
+- Keychain for API token storage.
+- The JSON snapshot must preserve stable IDs, `updatedAt`, `deletedAt`, and tombstones.
+
+Recommended future storage for larger data sets:
 
 - SQLite, SwiftData, or CoreData with the sync fields below.
-- Keychain for API token storage.
 
 Do not store session tokens or passwords in `UserDefaults`.
 
@@ -351,7 +375,13 @@ cd macapp
 swift build
 ```
 
-When creating or changing iOS app behavior, add platform-appropriate build/test commands to this file once the project exists.
+When changing iOS app behavior:
+
+```bash
+cd iosapp
+xcodebuild -project ClipBase.xcodeproj -scheme ClipBase -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
+xcodebuild -project ClipBase.xcodeproj -scheme ClipBase -destination 'platform=iOS Simulator,name=iPhone 17' test CODE_SIGNING_ALLOWED=NO
+```
 
 ## AI Implementation Checklist
 

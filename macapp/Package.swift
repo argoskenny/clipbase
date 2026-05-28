@@ -1,21 +1,29 @@
-// swift-tools-version: 6.2
+// swift-tools-version: 5.9
 import PackageDescription
 
 let package = Package(
-    name: "Clip",
+    name: "ClipBase",
     platforms: [
         .macOS(.v13)
     ],
     products: [
-        .executable(name: "Clip", targets: ["Clip"])
+        .executable(name: "ClipBase", targets: ["ClipBaseApp"])
     ],
     targets: [
         .executableTarget(
-            name: "Clip",
+            name: "ClipBaseApp",
             path: "Sources/ClipBaseApp",
             resources: [
                 .process("Resources")
+            ],
+            linkerSettings: [
+                .linkedFramework("Security")
             ]
+        ),
+        .testTarget(
+            name: "ClipBaseAppTests",
+            dependencies: ["ClipBaseApp"],
+            path: "Tests/ClipBaseAppTests"
         )
     ]
 )

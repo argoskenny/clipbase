@@ -55,6 +55,7 @@ iosapp/.build/
 iosapp/.swiftpm/xcode/package.xcworkspace/xcuserdata/
 iosapp/.swiftpm/xcode/xcuserdata/
 iosapp/DerivedData/
+iosapp/.derivedData/
 iosapp/build/
 iosapp/*.app
 iosapp/*.ipa

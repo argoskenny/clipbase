@@ -2,7 +2,7 @@
 
 ClipBase is a personal clip library, prompt optimizer, memo manager, and sync-ready knowledge utility. It is designed for people who frequently reuse account notes, snippets, prompt templates, operational text, or selected parts of longer documents.
 
-The current full implementation is the Web app. A native macOS SwiftUI app is included, and the iOS directory is reserved for future work.
+The Web app is the canonical implementation. Native macOS and iOS SwiftUI apps are included for platform-specific workflows.
 
 ## Features
 
@@ -15,6 +15,7 @@ The current full implementation is the Web app. A native macOS SwiftUI app is in
 - Full JSON backup and restore
 - Cross-platform sync API with stable IDs, tombstones, and last-write-wins conflict handling
 - Native macOS SwiftUI app kept in the repository as the original desktop implementation
+- Native iOS SwiftUI app with Bearer-token sync, Keychain token storage, CSV import/export, and memo range copying
 
 ## Project Layout
 
@@ -22,7 +23,7 @@ The current full implementation is the Web app. A native macOS SwiftUI app is in
 clipbase/
   web/       # React + Vite frontend, Express API, SQLite storage
   macapp/    # Original SwiftPM macOS app
-  iosapp/    # Reserved for a future iOS implementation
+  iosapp/    # Native SwiftUI iOS app
   docs/      # Cross-platform sync API documentation
 ```
 
@@ -103,6 +104,18 @@ swift build
 ```
 
 The Web app remains the canonical implementation for the current data model and sync behavior.
+
+## iOS App
+
+The iOS app lives in `iosapp/` and uses a SwiftUI Xcode project.
+
+```bash
+cd iosapp
+xcodebuild -project ClipBase.xcodeproj -scheme ClipBase -destination 'generic/platform=iOS Simulator' build CODE_SIGNING_ALLOWED=NO
+xcodebuild -project ClipBase.xcodeproj -scheme ClipBase -destination 'platform=iOS Simulator,name=iPhone 17' test CODE_SIGNING_ALLOWED=NO
+```
+
+The app uses `/api/login` with `tokenMode: "bearer"` and stores the returned session token in Keychain.
 
 ## Sync Model
 
