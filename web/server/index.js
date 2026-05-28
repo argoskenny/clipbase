@@ -55,8 +55,8 @@ app.post("/api/login", (request, response) => {
 });
 
 app.post("/api/logout", (request, response) => {
-  const token = request.cookies.clipbase_session;
-  if (token) {
+  const tokens = [getBearerToken(request), request.cookies.clipbase_session].filter(Boolean);
+  for (const token of new Set(tokens)) {
     store.deleteSession(token);
   }
   response.clearCookie("clipbase_session");
@@ -75,7 +75,7 @@ app.get("/api/state", (_request, response) => {
 });
 
 app.get("/api/sync", (request, response) => {
-  const since = Number(request.query.since || 0);
+  const since = parseSyncSince(request.query.since || 0);
   response.json({
     serverTime: Date.now(),
     changes: store.getSyncChanges(since)
@@ -84,8 +84,8 @@ app.get("/api/sync", (request, response) => {
 
 app.post("/api/sync", (request, response, next) => {
   try {
-    const since = Number(request.body.since || 0);
-    store.applySyncChanges(request.body.changes || {});
+    const { since, changes } = validateSyncRequestBody(request.body);
+    store.applySyncChanges(changes);
     response.json({
       serverTime: Date.now(),
       changes: store.getSyncChanges(since)
@@ -241,9 +241,7 @@ app.listen(port, "127.0.0.1", () => {
 });
 
 function requireAuth(request, response, next) {
-  const bearerToken = request.headers.authorization?.startsWith("Bearer ")
-    ? request.headers.authorization.slice("Bearer ".length).trim()
-    : null;
+  const bearerToken = getBearerToken(request);
   const session = store.getSession(bearerToken || request.cookies.clipbase_session);
   if (!session) {
     response.status(401).json({ error: "請先登入" });
@@ -252,6 +250,47 @@ function requireAuth(request, response, next) {
 
   request.user = session;
   next();
+}
+
+function getBearerToken(request) {
+  return request.headers.authorization?.startsWith("Bearer ")
+    ? request.headers.authorization.slice("Bearer ".length).trim()
+    : null;
+}
+
+function validateSyncRequestBody(body) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    throwBadRequest("同步請求格式不正確");
+  }
+
+  const since = parseSyncSince(body.since ?? 0);
+  const changes = body.changes;
+  if (!changes || typeof changes !== "object" || Array.isArray(changes)) {
+    throwBadRequest("同步請求必須包含 changes 物件");
+  }
+
+  for (const key of ["sections", "items", "optimizers", "memoDocuments"]) {
+    if (!Array.isArray(changes[key])) {
+      throwBadRequest(`changes.${key} 必須是陣列`);
+    }
+  }
+
+  return { since, changes };
+}
+
+function parseSyncSince(value) {
+  const since = Number(value);
+  if (!Number.isFinite(since) || since < 0) {
+    throwBadRequest("since 必須是非負數字");
+  }
+
+  return since;
+}
+
+function throwBadRequest(message) {
+  const error = new Error(message);
+  error.statusCode = 400;
+  throw error;
 }
 
 function applySecurityHeaders(_request, response, next) {
