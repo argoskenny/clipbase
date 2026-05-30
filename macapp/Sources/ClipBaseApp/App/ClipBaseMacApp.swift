@@ -11,6 +11,7 @@ struct ClipBaseMacApp: App {
             ContentView(store: store)
                 .frame(minWidth: 1120, minHeight: 720)
         }
+        .defaultSize(width: 1320, height: 860)
         .commands {
             CommandMenu("ClipBase") {
                 Button("立即同步") {

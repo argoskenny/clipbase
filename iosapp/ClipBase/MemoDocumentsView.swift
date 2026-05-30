@@ -74,7 +74,6 @@ struct MemoDocumentsView: View {
                         .navigationTitle(document.title)
                         .toolbar {
                             ToolbarItemGroup(placement: .topBarTrailing) {
-                                ToolbarSyncButton()
                                 Button {
                                     activeSheet = .edit(document)
                                 } label: {

@@ -1,3 +1,4 @@
+import AppKit
 import SwiftUI
 
 struct ContentView: View {
@@ -51,18 +52,29 @@ struct ContentView: View {
                 MemoDocumentsView(store: store)
             }
         }
+        .removeDefaultSidebarToggleIfAvailable()
         .toolbar {
-            ToolbarItemGroup {
-                Text(store.syncMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+            if #available(macOS 26.0, *) {
+                DefaultToolbarItem(kind: .sidebarToggle, placement: .navigation)
+            } else {
+                ToolbarItem(placement: .navigation) {
+                    Button {
+                        toggleSidebar()
+                    } label: {
+                        Label("顯示或隱藏側邊欄", systemImage: "sidebar.left")
+                    }
+                    .help("顯示或隱藏側邊欄")
+                }
+            }
 
+            ToolbarItemGroup {
                 Button {
                     Task { await store.syncNow() }
                 } label: {
                     Label(store.isSyncing ? "同步中" : "同步", systemImage: "arrow.triangle.2.circlepath")
                 }
                 .disabled(store.isSyncing)
+                .help(store.syncMessage)
 
                 Menu {
                     Button("匯入 CSV...") { store.openCSVImportPanel() }
@@ -92,6 +104,21 @@ struct ContentView: View {
             return "\(store.optimizers.count) 個模板"
         case .memos:
             return "\(store.memoDocuments.count) 份文件"
+        }
+    }
+}
+
+private func toggleSidebar() {
+    NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
+}
+
+private extension View {
+    @ViewBuilder
+    func removeDefaultSidebarToggleIfAvailable() -> some View {
+        if #available(macOS 14.0, *) {
+            toolbar(removing: .sidebarToggle)
+        } else {
+            self
         }
     }
 }

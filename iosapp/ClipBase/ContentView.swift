@@ -152,25 +152,6 @@ struct SectionHeaderCount: View {
     }
 }
 
-struct ToolbarSyncButton: View {
-    @EnvironmentObject private var model: AppModel
-
-    var body: some View {
-        Button {
-            Task {
-                await model.sync()
-            }
-        } label: {
-            if model.isSyncing {
-                ProgressView()
-            } else {
-                Label("同步", systemImage: "arrow.triangle.2.circlepath")
-            }
-        }
-        .disabled(model.isSyncing)
-    }
-}
-
 struct DestructiveTrashButton: View {
     var title: String
     var action: () -> Void

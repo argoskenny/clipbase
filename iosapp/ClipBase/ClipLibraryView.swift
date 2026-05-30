@@ -16,10 +16,10 @@ struct ClipLibraryView: View {
     }
 
     private var selectedSection: ClipSection? {
-        guard let selectedSectionId else {
-            return sections.first
+        guard let selectedSectionId = DomainRules.validSectionSelection(current: selectedSectionId, sections: sections) else {
+            return nil
         }
-        return sections.first { $0.id == selectedSectionId } ?? sections.first
+        return sections.first { $0.id == selectedSectionId }
     }
 
     private var filteredItems: [ClipItem] {
@@ -136,7 +136,6 @@ struct ClipLibraryView: View {
                     .navigationTitle(section.title)
                     .toolbar {
                         ToolbarItemGroup(placement: .topBarTrailing) {
-                            ToolbarSyncButton()
                             Button {
                                 activeSheet = .newItem(section.id)
                             } label: {
@@ -145,7 +144,11 @@ struct ClipLibraryView: View {
                         }
                     }
                 } else {
-                    EmptyStateView(title: "尚無分類", message: "先新增分類，或匯入 Web 相容的四欄 CSV。", systemImage: "folder")
+                    EmptyStateView(
+                        title: sections.isEmpty ? "尚無分類" : "選擇分類",
+                        message: sections.isEmpty ? "先新增分類，或匯入 Web 相容的四欄 CSV。" : "從左側分類列表選擇一個分類後，查看與管理項目。",
+                        systemImage: "folder"
+                    )
                         .navigationTitle("剪貼內容")
                         .toolbar {
                             ToolbarItemGroup(placement: .topBarTrailing) {
@@ -164,9 +167,8 @@ struct ClipLibraryView: View {
                 }
             }
         }
-        .onAppear(perform: ensureSelection)
         .onChange(of: sections) {
-            ensureSelection()
+            selectedSectionId = DomainRules.validSectionSelection(current: selectedSectionId, sections: sections)
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
@@ -228,13 +230,6 @@ struct ClipLibraryView: View {
         }
     }
 
-    private func ensureSelection() {
-        if let selectedSectionId, sections.contains(where: { $0.id == selectedSectionId }) {
-            return
-        }
-        selectedSectionId = sections.first?.id
-    }
-
     private func importCSV(from url: URL) {
         let didAccess = url.startAccessingSecurityScopedResource()
         defer {
@@ -246,7 +241,7 @@ struct ClipLibraryView: View {
         do {
             let csv = try String(contentsOf: url, encoding: .utf8)
             model.importCSV(csv)
-            ensureSelection()
+            selectedSectionId = nil
         } catch {
             model.errorMessage = error.localizedDescription
         }

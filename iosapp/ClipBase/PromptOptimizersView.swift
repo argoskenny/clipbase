@@ -135,7 +135,6 @@ struct PromptOptimizersView: View {
                     .navigationTitle(optimizer.title)
                     .toolbar {
                         ToolbarItemGroup(placement: .topBarTrailing) {
-                            ToolbarSyncButton()
                             CopyButton(text: combinedPrompt)
                         }
                     }

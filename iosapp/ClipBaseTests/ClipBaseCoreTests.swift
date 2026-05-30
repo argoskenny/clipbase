@@ -6,6 +6,16 @@ final class ClipBaseCoreTests: XCTestCase {
         XCTAssertEqual(ClipBaseSnapshot.empty.baseURL, "https://clipbase.thelonesomeera.com/")
     }
 
+    func testClipLibraryDoesNotAutoSelectFirstSectionByDefault() {
+        let sections = [
+            ClipSection(id: "first", title: "第一個分類", position: 0, updatedAt: 100, deletedAt: nil)
+        ]
+
+        XCTAssertNil(DomainRules.validSectionSelection(current: nil, sections: sections))
+        XCTAssertNil(DomainRules.validSectionSelection(current: "missing", sections: sections))
+        XCTAssertEqual(DomainRules.validSectionSelection(current: "first", sections: sections), "first")
+    }
+
     func testPromptOptimizerMergeMatchesWebRules() {
         let optimizer = PromptOptimizer(
             id: "optimizer-1",

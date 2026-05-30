@@ -95,6 +95,13 @@ enum DomainRules {
         return start < end ? CopyableRange(start: start, end: end) : nil
     }
 
+    static func validSectionSelection(current: String?, sections: [ClipSection]) -> String? {
+        guard let current, sections.contains(where: { $0.id == current }) else {
+            return nil
+        }
+        return current
+    }
+
     static func normalizeLineEndings(_ content: String) -> String {
         content
             .replacingOccurrences(of: "\r\n", with: "\n")
