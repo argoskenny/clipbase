@@ -1,6 +1,6 @@
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 
-const SESSION_TTL_MS = 1000 * 60 * 60 * 12;
+export const SESSION_TTL_MS = 1000 * 60 * 60 * 24 * 30 * 6;
 
 export function getConfiguredCredentials(env = process.env) {
   if (!env.CLIPBASE_USERNAME || !env.CLIPBASE_PASSWORD) {

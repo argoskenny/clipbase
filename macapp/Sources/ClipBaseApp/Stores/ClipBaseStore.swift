@@ -22,7 +22,7 @@ final class ClipBaseStore: ObservableObject {
     @Published var alert: UserFacingAlert?
 
     private let repository: LocalRepository
-    private let keychain: KeychainTokenStore
+    private let tokenStore: UserDefaultsTokenStore
     private let apiClient: ClipBaseAPIClient
     private let defaults: UserDefaults
     private var bootstrapped = false
@@ -30,12 +30,12 @@ final class ClipBaseStore: ObservableObject {
 
     init(
         repository: LocalRepository = LocalRepository(),
-        keychain: KeychainTokenStore = KeychainTokenStore(),
+        tokenStore: UserDefaultsTokenStore = UserDefaultsTokenStore(),
         apiClient: ClipBaseAPIClient = ClipBaseAPIClient(),
         defaults: UserDefaults = .standard
     ) {
         self.repository = repository
-        self.keychain = keychain
+        self.tokenStore = tokenStore
         self.apiClient = apiClient
         self.defaults = defaults
         refreshPublishedState()
@@ -60,7 +60,7 @@ final class ClipBaseStore: ObservableObject {
         guard !bootstrapped else { return }
         bootstrapped = true
 
-        if keychain.loadToken() == nil {
+        if tokenStore.loadToken() == nil {
             authState = .unauthenticated
             return
         }
@@ -81,7 +81,7 @@ final class ClipBaseStore: ObservableObject {
                 try repository.resetAll()
             }
 
-            try keychain.saveToken(token)
+            tokenStore.saveToken(token)
             apiBaseURL = normalizedBaseURL
             savedUsername = response.username
             lastAuthenticatedBaseURL = normalizedBaseURL
@@ -98,10 +98,10 @@ final class ClipBaseStore: ObservableObject {
     }
 
     func logout() async {
-        if let token = keychain.loadToken() {
+        if let token = tokenStore.loadToken() {
             await apiClient.logout(baseURL: apiBaseURL, token: token)
         }
-        keychain.deleteToken()
+        tokenStore.deleteToken()
         authState = .unauthenticated
     }
 
@@ -110,7 +110,7 @@ final class ClipBaseStore: ObservableObject {
             pendingSync = true
             return
         }
-        guard let token = keychain.loadToken() else {
+        guard let token = tokenStore.loadToken() else {
             authState = .unauthenticated
             return
         }
@@ -141,7 +141,7 @@ final class ClipBaseStore: ObservableObject {
                 flash(title: "同步完成", message: "本機與 Web 已完成同步")
             }
         } catch APIError.unauthorized {
-            keychain.deleteToken()
+            tokenStore.deleteToken()
             authState = .unauthenticated
             syncMessage = "登入已過期"
             alert = UserFacingAlert(title: "請重新登入", message: "伺服器回傳 401，Bearer token 已失效。")

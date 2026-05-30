@@ -3,7 +3,7 @@ import express from "express";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { createSessionToken, getConfiguredCredentials, getSessionExpiry, shouldReturnBearerToken, verifyCredentials } from "./lib/auth.js";
+import { SESSION_TTL_MS, createSessionToken, getConfiguredCredentials, getSessionExpiry, shouldReturnBearerToken, verifyCredentials } from "./lib/auth.js";
 import { exportCsv, parseCsv } from "./lib/csv.js";
 import { ClipDatabase } from "./lib/database.js";
 import { getSecurityHeaders, parseAllowedOrigins, shouldRejectCrossOriginRequest } from "./lib/security.js";
@@ -46,7 +46,7 @@ app.post("/api/login", (request, response) => {
     httpOnly: true,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
-    maxAge: 1000 * 60 * 60 * 12
+    maxAge: SESSION_TTL_MS
   });
   response.json({
     username: configuredCredentials.username,

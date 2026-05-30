@@ -54,17 +54,12 @@ struct ContentView: View {
         }
         .removeDefaultSidebarToggleIfAvailable()
         .toolbar {
-            if #available(macOS 26.0, *) {
-                DefaultToolbarItem(kind: .sidebarToggle, placement: .navigation)
-            } else {
-                ToolbarItem(placement: .navigation) {
-                    Button {
-                        toggleSidebar()
-                    } label: {
-                        Label("顯示或隱藏側邊欄", systemImage: "sidebar.left")
-                    }
-                    .help("顯示或隱藏側邊欄")
-                }
+            ToolbarItem(placement: .navigation) {
+                Image(nsImage: NSApp.applicationIconImage)
+                    .resizable()
+                    .frame(width: 24, height: 24)
+                    .clipShape(RoundedRectangle(cornerRadius: 5, style: .continuous))
+                    .help("ClipBase")
             }
 
             ToolbarItemGroup {
@@ -106,10 +101,6 @@ struct ContentView: View {
             return "\(store.memoDocuments.count) 份文件"
         }
     }
-}
-
-private func toggleSidebar() {
-    NSApp.sendAction(#selector(NSSplitViewController.toggleSidebar(_:)), to: nil, from: nil)
 }
 
 private extension View {

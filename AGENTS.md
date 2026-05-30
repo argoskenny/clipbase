@@ -404,7 +404,7 @@ Before finishing a task, verify the relevant items:
 ## Current Known Constraints
 
 - Single-user model.
-- Session token currently expires after 12 hours.
+- Session token currently expires after 6 months (180 days).
 - Row-level last-write-wins, not field-level merge.
 - Device clock drift can affect conflict resolution.
 - Sync API currently has no pagination.

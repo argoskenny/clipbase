@@ -1,5 +1,5 @@
 import { describe, expect, test } from "vitest";
-import { getConfiguredCredentials, shouldReturnBearerToken, verifyCredentials } from "../server/lib/auth.js";
+import { getConfiguredCredentials, getSessionExpiry, shouldReturnBearerToken, verifyCredentials } from "../server/lib/auth.js";
 
 describe("auth", () => {
   test("accepts server-side configured credentials", () => {
@@ -34,5 +34,9 @@ describe("auth", () => {
     expect(shouldReturnBearerToken({})).toBe(false);
     expect(shouldReturnBearerToken({ tokenMode: "bearer" })).toBe(true);
     expect(shouldReturnBearerToken({ client: "native" })).toBe(true);
+  });
+
+  test("sets session expiry six months after login", () => {
+    expect(getSessionExpiry(0)).toBe(1000 * 60 * 60 * 24 * 30 * 6);
   });
 });

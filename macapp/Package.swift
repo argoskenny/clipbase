@@ -15,9 +15,6 @@ let package = Package(
             path: "Sources/ClipBaseApp",
             resources: [
                 .process("Resources")
-            ],
-            linkerSettings: [
-                .linkedFramework("Security")
             ]
         ),
         .testTarget(

@@ -980,7 +980,7 @@ AI agent 實作前應確認：
 目前限制：
 
 - 單一使用者。
-- session token 12 小時有效。
+- session token 6 個月（180 天）有效。
 - last-write-wins 是 row-level，不是 field-level。
 - 裝置時間不準可能造成衝突判斷不準。
 - 同步 API 目前不做分頁；資料量很大時需加 pagination 或 cursor。
