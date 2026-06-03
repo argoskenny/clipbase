@@ -18,11 +18,14 @@ import {
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { copyToClipboard } from "./clipboard";
 import {
+  getMemoReaderBlocks,
   getCopyableRangeForSelection,
   normalizeCopyableRanges,
   splitMemoParagraphs,
   splitMemoParagraphsIntoSegments,
-  type CopyableRange
+  type CopyableRange,
+  type MemoReaderBlock,
+  type MemoReaderInline
 } from "./memoDocuments";
 
 type ClipItem = {
@@ -1286,31 +1289,94 @@ function MemoDocumentReader({
   document: MemoDocument;
   onCopyMarkedText: (text: string) => Promise<void>;
 }) {
-  const paragraphs = splitMemoParagraphsIntoSegments(document.content, document.copyableRanges);
+  const blocks = getMemoReaderBlocks(splitMemoParagraphsIntoSegments(document.content, document.copyableRanges));
 
   return (
     <article className="memo-reader">
-      {paragraphs.map((segments, paragraphIndex) => (
-        <p className="memo-reader-paragraph" key={`paragraph-${paragraphIndex}`}>
-          {segments.map((segment, segmentIndex) => (
-            segment.copyable ? (
-              <button
-                key={`${paragraphIndex}-${segmentIndex}`}
-                className="memo-copyable-text"
-                onClick={() => void onCopyMarkedText(segment.text)}
-                title="點擊複製此文字"
-              >
-                {segment.text}
-              </button>
-            ) : (
-              <span key={`${paragraphIndex}-${segmentIndex}`}>{segment.text}</span>
-            )
-          ))}
-        </p>
-      ))}
-      {paragraphs.length === 0 && <div className="empty fill">這份文件目前沒有內容。</div>}
+      {blocks.map((block, blockIndex) => renderMemoReaderBlock(block, blockIndex, onCopyMarkedText))}
+      {blocks.length === 0 && <div className="empty fill">這份文件目前沒有內容。</div>}
     </article>
   );
+}
+
+function renderMemoReaderBlock(block: MemoReaderBlock, blockIndex: number, onCopyMarkedText: (text: string) => Promise<void>) {
+  switch (block.type) {
+    case "heading": {
+      const HeadingTag = `h${block.level}` as "h1" | "h2" | "h3" | "h4" | "h5" | "h6";
+      return (
+        <HeadingTag className="memo-reader-heading" key={`heading-${blockIndex}`}>
+          {renderMemoReaderInline(block.children, `heading-${blockIndex}`, onCopyMarkedText)}
+        </HeadingTag>
+      );
+    }
+    case "unordered-list":
+      return (
+        <ul className="memo-reader-list" key={`ul-${blockIndex}`}>
+          {block.items.map((item, itemIndex) => (
+            <li key={`ul-${blockIndex}-${itemIndex}`}>
+              {renderMemoReaderInline(item, `ul-${blockIndex}-${itemIndex}`, onCopyMarkedText)}
+            </li>
+          ))}
+        </ul>
+      );
+    case "ordered-list":
+      return (
+        <ol className="memo-reader-list" key={`ol-${blockIndex}`}>
+          {block.items.map((item, itemIndex) => (
+            <li key={`ol-${blockIndex}-${itemIndex}`}>
+              {renderMemoReaderInline(item, `ol-${blockIndex}-${itemIndex}`, onCopyMarkedText)}
+            </li>
+          ))}
+        </ol>
+      );
+    case "blockquote":
+      return (
+        <blockquote className="memo-reader-quote" key={`quote-${blockIndex}`}>
+          {renderMemoReaderInline(block.children, `quote-${blockIndex}`, onCopyMarkedText)}
+        </blockquote>
+      );
+    case "code-block":
+      return <pre className="memo-reader-code-block" key={`code-${blockIndex}`}><code>{block.text}</code></pre>;
+    case "paragraph":
+      return (
+        <p className="memo-reader-paragraph" key={`paragraph-${blockIndex}`}>
+          {renderMemoReaderInline(block.children, `paragraph-${blockIndex}`, onCopyMarkedText)}
+        </p>
+      );
+  }
+}
+
+function renderMemoReaderInline(tokens: MemoReaderInline[], keyPrefix: string, onCopyMarkedText: (text: string) => Promise<void>): ReactNode[] {
+  return tokens.map((token, index) => {
+    const key = `${keyPrefix}-${index}`;
+    switch (token.type) {
+      case "copyable":
+        return (
+          <button
+            key={key}
+            className="memo-copyable-text"
+            onClick={() => void onCopyMarkedText(token.text)}
+            title="點擊複製此文字"
+          >
+            {token.text}
+          </button>
+        );
+      case "strong":
+        return <strong key={key}>{renderMemoReaderInline(token.children, key, onCopyMarkedText)}</strong>;
+      case "emphasis":
+        return <em key={key}>{renderMemoReaderInline(token.children, key, onCopyMarkedText)}</em>;
+      case "code":
+        return <code className="memo-reader-inline-code" key={key}>{token.text}</code>;
+      case "link":
+        return (
+          <a href={token.href} key={key} rel="noreferrer" target="_blank">
+            {renderMemoReaderInline(token.children, key, onCopyMarkedText)}
+          </a>
+        );
+      case "text":
+        return <span key={key}>{token.text}</span>;
+    }
+  });
 }
 
 function Modal({ title, onClose, children }: { title: string; onClose: () => void; children: ReactNode }) {

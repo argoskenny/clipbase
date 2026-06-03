@@ -844,10 +844,85 @@ td small {
   overflow-wrap: anywhere;
 }
 
+.memo-reader-paragraph,
+.memo-reader-heading,
+.memo-reader-list,
+.memo-reader-quote,
+.memo-reader-code-block {
+  margin: 0;
+  color: #203530;
+  overflow-wrap: anywhere;
+}
+
+.memo-reader-paragraph,
+.memo-reader-heading,
+.memo-reader-list,
+.memo-reader-quote {
+  white-space: pre-wrap;
+}
+
 .memo-reader-paragraph {
   padding: 13px 14px;
   font-size: 15px;
   line-height: 1.76;
+}
+
+.memo-reader-heading {
+  padding: 7px 14px 3px;
+  font-weight: 850;
+  line-height: 1.35;
+}
+
+.memo-reader-heading:is(h1) {
+  font-size: 26px;
+}
+
+.memo-reader-heading:is(h2) {
+  font-size: 22px;
+}
+
+.memo-reader-heading:is(h3) {
+  font-size: 19px;
+}
+
+.memo-reader-heading:is(h4, h5, h6) {
+  font-size: 16px;
+}
+
+.memo-reader-list {
+  display: grid;
+  gap: 6px;
+  padding: 8px 18px 8px 34px;
+  font-size: 15px;
+  line-height: 1.68;
+}
+
+.memo-reader-quote {
+  padding: 11px 14px;
+  border-left: 3px solid rgba(37, 99, 235, 0.35);
+  border-radius: 0 var(--radius) var(--radius) 0;
+  background: rgba(240, 247, 255, 0.78);
+  font-size: 15px;
+  line-height: 1.76;
+}
+
+.memo-reader-code-block {
+  padding: 13px 14px;
+  overflow: auto;
+  border: 1px solid rgba(32, 53, 48, 0.12);
+  border-radius: var(--radius);
+  background: #f6f8f7;
+  font-size: 13px;
+  line-height: 1.7;
+  white-space: pre;
+}
+
+.memo-reader-inline-code {
+  padding: 2px 5px;
+  border-radius: 5px;
+  background: rgba(32, 53, 48, 0.08);
+  color: #14362f;
+  font-size: 0.92em;
 }
 
 .memo-copyable-text,
@@ -1129,13 +1204,26 @@ pre {
     padding: 14px;
   }
 
+  .topbar > *,
+  .brand-lockup,
+  .topbar-actions,
+  .workspace,
+  .content-grid,
+  .side-panel,
+  .detail-panel {
+    min-width: 0;
+    max-width: 100%;
+  }
+
   .topbar-actions {
     justify-content: flex-start;
+    width: 100%;
   }
 
   .topbar-actions .icon-button,
   .topbar-actions .user-chip,
   .topbar-actions .notice {
+    min-width: 0;
     flex: 1 1 auto;
   }
 
@@ -1146,6 +1234,8 @@ pre {
   .rail {
     display: flex;
     gap: 8px;
+    width: 100%;
+    max-width: 100vw;
     padding: 10px 12px;
     overflow-x: auto;
   }

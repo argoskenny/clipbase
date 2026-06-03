@@ -1,6 +1,7 @@
 import { describe, expect, test } from "vitest";
 import {
   getCopyableRangeForSelection,
+  getMemoReaderBlocks,
   normalizeCopyableRanges,
   splitMemoParagraphs,
   splitMemoParagraphsIntoSegments
@@ -47,6 +48,51 @@ describe("memo document helpers", () => {
         { text: markedText, copyable: true },
         { text: "。這讓人重新接續。", copyable: false }
       ]
+    ]);
+  });
+
+  test("parses non-copyable memo reader text as markdown blocks", () => {
+    expect(getMemoReaderBlocks([
+      [
+        { text: "## 小結", copyable: false }
+      ],
+      [
+        { text: "- **重點**\n- `指令`", copyable: false }
+      ]
+    ])).toEqual([
+      {
+        type: "heading",
+        level: 2,
+        children: [{ type: "text", text: "小結" }]
+      },
+      {
+        type: "unordered-list",
+        items: [
+          [{ type: "strong", children: [{ type: "text", text: "重點" }] }],
+          [{ type: "code", text: "指令" }]
+        ]
+      }
+    ]);
+  });
+
+  test("keeps copyable memo text as raw clickable segments while parsing surrounding markdown", () => {
+    const content = "請先 **檢查** 這段可複製文字，再看 `結果`。";
+    const markedText = "這段可複製文字";
+    const start = content.indexOf(markedText);
+
+    expect(getMemoReaderBlocks(splitMemoParagraphsIntoSegments(content, [{ start, end: start + markedText.length }]))).toEqual([
+      {
+        type: "paragraph",
+        children: [
+          { type: "text", text: "請先 " },
+          { type: "strong", children: [{ type: "text", text: "檢查" }] },
+          { type: "text", text: " " },
+          { type: "copyable", text: markedText },
+          { type: "text", text: "，再看 " },
+          { type: "code", text: "結果" },
+          { type: "text", text: "。" }
+        ]
+      }
     ]);
   });
 });

@@ -8,6 +8,22 @@ export type MemoTextSegment = {
   copyable: boolean;
 };
 
+export type MemoReaderInline =
+  | { type: "text"; text: string }
+  | { type: "copyable"; text: string }
+  | { type: "strong"; children: MemoReaderInline[] }
+  | { type: "emphasis"; children: MemoReaderInline[] }
+  | { type: "code"; text: string }
+  | { type: "link"; href: string; children: MemoReaderInline[] };
+
+export type MemoReaderBlock =
+  | { type: "paragraph"; children: MemoReaderInline[] }
+  | { type: "heading"; level: 1 | 2 | 3 | 4 | 5 | 6; children: MemoReaderInline[] }
+  | { type: "unordered-list"; items: MemoReaderInline[][] }
+  | { type: "ordered-list"; items: MemoReaderInline[][] }
+  | { type: "blockquote"; children: MemoReaderInline[] }
+  | { type: "code-block"; text: string };
+
 export function splitMemoParagraphs(content: string): string[] {
   const normalized = content.replace(/\r\n/g, "\n").trim();
   if (!normalized) {
@@ -90,10 +106,153 @@ export function splitMemoParagraphsIntoSegments(content: string, ranges: Copyabl
   });
 }
 
+export function getMemoReaderBlocks(paragraphs: MemoTextSegment[][]): MemoReaderBlock[] {
+  return paragraphs.map((segments) => {
+    const plainText = segments.map((segment) => segment.text).join("");
+    if (!segments.some((segment) => segment.copyable)) {
+      const codeBlockMatch = plainText.match(/^```[^\n]*\n([\s\S]*?)\n?```$/);
+      if (codeBlockMatch) {
+        return { type: "code-block", text: codeBlockMatch[1] };
+      }
+
+      const headingMatch = plainText.match(/^(#{1,6})\s+(.+)$/s);
+      if (headingMatch && !headingMatch[2].includes("\n")) {
+        return {
+          type: "heading",
+          level: headingMatch[1].length as 1 | 2 | 3 | 4 | 5 | 6,
+          children: parseMemoMarkdownInline(headingMatch[2])
+        };
+      }
+
+      const lines = plainText.split("\n");
+      if (lines.every((line) => /^\s*[-*+]\s+/.test(line))) {
+        return {
+          type: "unordered-list",
+          items: lines.map((line) => parseMemoMarkdownInline(line.replace(/^\s*[-*+]\s+/, "")))
+        };
+      }
+
+      if (lines.every((line) => /^\s*\d+[.)]\s+/.test(line))) {
+        return {
+          type: "ordered-list",
+          items: lines.map((line) => parseMemoMarkdownInline(line.replace(/^\s*\d+[.)]\s+/, "")))
+        };
+      }
+
+      if (lines.every((line) => /^\s*>\s?/.test(line))) {
+        return {
+          type: "blockquote",
+          children: parseMemoMarkdownInline(lines.map((line) => line.replace(/^\s*>\s?/, "")).join("\n"))
+        };
+      }
+    }
+
+    return {
+      type: "paragraph",
+      children: segments.flatMap((segment) => (
+        segment.copyable ? [{ type: "copyable" as const, text: segment.text }] : parseMemoMarkdownInline(segment.text)
+      ))
+    };
+  });
+}
+
+export function parseMemoMarkdownInline(text: string): MemoReaderInline[] {
+  const tokens: MemoReaderInline[] = [];
+  let cursor = 0;
+
+  while (cursor < text.length) {
+    const next = findNextMarkdownToken(text, cursor);
+    if (!next) {
+      tokens.push({ type: "text", text: text.slice(cursor) });
+      break;
+    }
+
+    if (next.start > cursor) {
+      tokens.push({ type: "text", text: text.slice(cursor, next.start) });
+    }
+    tokens.push(next.token);
+    cursor = next.end;
+  }
+
+  return tokens.filter((token) => token.type !== "text" || token.text.length > 0);
+}
+
 function splitMemoParagraphsWithOffsets(content: string): Array<{ start: number; end: number }> {
   const matches = [...content.matchAll(/\S[\s\S]*?(?=\n\s*\n|$)/g)];
   return matches.map((match) => ({
     start: match.index ?? 0,
     end: (match.index ?? 0) + match[0].trimEnd().length
   }));
+}
+
+function findNextMarkdownToken(text: string, from: number): { start: number; end: number; token: MemoReaderInline } | null {
+  const candidates = [
+    findInlineCode(text, from),
+    findDelimitedInline(text, from, "**", "strong"),
+    findDelimitedInline(text, from, "*", "emphasis"),
+    findMarkdownLink(text, from)
+  ].filter((candidate): candidate is { start: number; end: number; token: MemoReaderInline } => candidate !== null);
+
+  return candidates.sort((left, right) => left.start - right.start || left.end - right.end)[0] ?? null;
+}
+
+function findInlineCode(text: string, from: number): { start: number; end: number; token: MemoReaderInline } | null {
+  const start = text.indexOf("`", from);
+  if (start < 0) {
+    return null;
+  }
+  const end = text.indexOf("`", start + 1);
+  if (end < 0) {
+    return null;
+  }
+  return { start, end: end + 1, token: { type: "code", text: text.slice(start + 1, end) } };
+}
+
+function findDelimitedInline(
+  text: string,
+  from: number,
+  delimiter: "*" | "**",
+  type: "strong" | "emphasis"
+): { start: number; end: number; token: MemoReaderInline } | null {
+  const start = text.indexOf(delimiter, from);
+  if (start < 0 || (delimiter === "*" && text[start + 1] === "*")) {
+    return null;
+  }
+  const contentStart = start + delimiter.length;
+  const end = text.indexOf(delimiter, contentStart);
+  if (end <= contentStart || (delimiter === "*" && text[end + 1] === "*")) {
+    return null;
+  }
+
+  return {
+    start,
+    end: end + delimiter.length,
+    token: { type, children: parseMemoMarkdownInline(text.slice(contentStart, end)) }
+  };
+}
+
+function findMarkdownLink(text: string, from: number): { start: number; end: number; token: MemoReaderInline } | null {
+  const match = /\[([^\]]+)\]\(([^)\s]+)\)/g;
+  match.lastIndex = from;
+  const result = match.exec(text);
+  if (!result) {
+    return null;
+  }
+  const href = sanitizeMarkdownHref(result[2]);
+  if (!href) {
+    return null;
+  }
+
+  return {
+    start: result.index,
+    end: result.index + result[0].length,
+    token: { type: "link", href, children: parseMemoMarkdownInline(result[1]) }
+  };
+}
+
+function sanitizeMarkdownHref(href: string): string | null {
+  if (/^(https?:|mailto:)/i.test(href)) {
+    return href;
+  }
+  return null;
 }
