@@ -9,7 +9,7 @@ final class AppModel: ObservableObject {
     @Published var notice: String?
 
     private let store: LocalClipBaseStore
-    private let keychain: TokenStoring
+    private let tokenStore: TokenStoring
     private let syncClient: SyncServicing
     private var token: String?
     private var pendingSync = false
@@ -18,22 +18,26 @@ final class AppModel: ObservableObject {
 
     init(
         store: LocalClipBaseStore = LocalClipBaseStore(),
-        keychain: TokenStoring = KeychainStore(),
+        tokenStore: TokenStoring = UserDefaultsTokenStore(),
         syncClient: SyncServicing = SyncClient()
     ) {
         self.store = store
-        self.keychain = keychain
+        self.tokenStore = tokenStore
         self.syncClient = syncClient
         self.snapshot = .empty
-        self.token = keychain.readToken()
+        self.token = tokenStore.readToken()
         self.isAuthenticated = token != nil
     }
 
     func load() {
         do {
             snapshot = try store.load()
-            token = keychain.readToken()
-            isAuthenticated = token != nil
+            token = tokenStore.readToken()
+            if token == nil {
+                resetUnauthenticatedState(baseURL: snapshot.baseURL)
+                return
+            }
+            isAuthenticated = true
         } catch {
             errorMessage = error.localizedDescription
         }
@@ -49,7 +53,7 @@ final class AppModel: ObservableObject {
             guard let token = response.token, !token.isEmpty else {
                 throw SyncClientError.server("登入回應缺少 Bearer token")
             }
-            try keychain.saveToken(token)
+            try tokenStore.saveToken(token)
             self.token = token
             syncContextGeneration &+= 1
             if !sameBaseURL(snapshot.baseURL, normalizedBaseURL) {
@@ -70,21 +74,17 @@ final class AppModel: ObservableObject {
     }
 
     func logout() async {
-        if let token {
-            await syncClient.logout(baseURL: snapshot.baseURL, token: token)
+        let logoutBaseURL = snapshot.baseURL
+        let logoutToken = token
+        resetUnauthenticatedState(baseURL: logoutBaseURL)
+        if let logoutToken {
+            await syncClient.logout(baseURL: logoutBaseURL, token: logoutToken)
         }
-        keychain.deleteToken()
-        token = nil
-        syncContextGeneration &+= 1
-        pendingSync = false
-        snapshot.username = nil
-        persist(snapshot)
-        isAuthenticated = false
     }
 
     func sync() async {
         guard let token else {
-            isAuthenticated = false
+            resetUnauthenticatedState(baseURL: snapshot.baseURL)
             return
         }
         if isSyncing {
@@ -127,11 +127,7 @@ final class AppModel: ObservableObject {
             guard syncContextGenerationAtStart == syncContextGeneration, self.token == token else {
                 return
             }
-            keychain.deleteToken()
-            self.token = nil
-            syncContextGeneration &+= 1
-            pendingSync = false
-            isAuthenticated = false
+            resetUnauthenticatedState(baseURL: requestBaseURL)
             errorMessage = SyncClientError.unauthorized.localizedDescription
         } catch {
             errorMessage = error.localizedDescription
@@ -146,14 +142,7 @@ final class AppModel: ObservableObject {
             return
         }
 
-        keychain.deleteToken()
-        token = nil
-        syncContextGeneration &+= 1
-        pendingSync = false
-        isAuthenticated = false
-        snapshot = emptySnapshot(baseURL: normalizedBaseURL)
-        localChangeGeneration = 0
-        persist(snapshot)
+        resetUnauthenticatedState(baseURL: normalizedBaseURL)
     }
 
     @discardableResult
@@ -286,6 +275,20 @@ final class AppModel: ObservableObject {
         } catch {
             errorMessage = error.localizedDescription
         }
+    }
+
+    private func resetUnauthenticatedState(baseURL: String) {
+        tokenStore.deleteToken()
+        token = nil
+        syncContextGeneration &+= 1
+        pendingSync = false
+        isSyncing = false
+        isAuthenticated = false
+        localChangeGeneration = 0
+        notice = nil
+
+        snapshot = emptySnapshot(baseURL: baseURL)
+        persist(snapshot)
     }
 
     private func normalizeBaseURL(_ value: String) -> String {

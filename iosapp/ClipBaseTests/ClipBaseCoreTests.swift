@@ -207,6 +207,71 @@ final class ClipBaseCoreTests: XCTestCase {
         }
     }
 
+    func testUserDefaultsTokenStoreNormalizesAndClearsToken() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "ClipBaseTests.\(UUID().uuidString)"))
+        let tokenStore = UserDefaultsTokenStore(defaults: defaults)
+
+        try tokenStore.saveToken(" session-token ")
+
+        XCTAssertEqual(tokenStore.readToken(), "session-token")
+        XCTAssertEqual(defaults.string(forKey: UserDefaultsTokenStore.defaultsKey), "session-token")
+
+        tokenStore.deleteToken()
+
+        XCTAssertNil(tokenStore.readToken())
+    }
+
+    @MainActor
+    func testLoadWithoutTokenResetsPreviousLoginData() throws {
+        let store = LocalClipBaseStore(fileURL: temporaryStoreURL())
+        var snapshot = ClipBaseSnapshot.empty
+        snapshot.baseURL = "https://clipbase.test"
+        snapshot.username = "admin"
+        snapshot.lastSyncAt = 2_000
+        snapshot.sections = [
+            ClipSection(id: "old-section", title: "Old data", position: 0, updatedAt: 1_000, deletedAt: nil)
+        ]
+        try store.save(snapshot)
+
+        let tokenStore = InMemoryTokenStore()
+        let model = AppModel(store: store, tokenStore: tokenStore, syncClient: RecordingSyncClient())
+
+        model.load()
+
+        XCTAssertNil(tokenStore.readToken())
+        XCTAssertFalse(model.isAuthenticated)
+        XCTAssertEqual(model.snapshot.baseURL, "https://clipbase.test")
+        XCTAssertNil(model.snapshot.username)
+        XCTAssertEqual(model.snapshot.lastSyncAt, 0)
+        XCTAssertTrue(model.snapshot.sections.isEmpty)
+    }
+
+    @MainActor
+    func testLogoutResetsPreviousLoginData() async throws {
+        let store = LocalClipBaseStore(fileURL: temporaryStoreURL())
+        var snapshot = ClipBaseSnapshot.empty
+        snapshot.baseURL = "https://clipbase.test"
+        snapshot.username = "admin"
+        snapshot.lastSyncAt = 2_000
+        snapshot.sections = [
+            ClipSection(id: "old-section", title: "Old data", position: 0, updatedAt: 1_000, deletedAt: nil)
+        ]
+        try store.save(snapshot)
+
+        let tokenStore = InMemoryTokenStore(token: "session-token")
+        let model = AppModel(store: store, tokenStore: tokenStore, syncClient: RecordingSyncClient())
+        model.load()
+
+        await model.logout()
+
+        XCTAssertNil(tokenStore.readToken())
+        XCTAssertFalse(model.isAuthenticated)
+        XCTAssertEqual(model.snapshot.baseURL, "https://clipbase.test")
+        XCTAssertNil(model.snapshot.username)
+        XCTAssertEqual(model.snapshot.lastSyncAt, 0)
+        XCTAssertTrue(model.snapshot.sections.isEmpty)
+    }
+
     @MainActor
     func testSyncQueuesLocalChangesMadeDuringInFlightSync() async throws {
         let store = LocalClipBaseStore(fileURL: temporaryStoreURL())
@@ -219,7 +284,7 @@ final class ClipBaseCoreTests: XCTestCase {
 
         let tokenStore = InMemoryTokenStore(token: "session-token")
         let syncClient = ControlledSyncClient()
-        let model = AppModel(store: store, keychain: tokenStore, syncClient: syncClient)
+        let model = AppModel(store: store, tokenStore: tokenStore, syncClient: syncClient)
         model.load()
 
         let syncTask = Task { await model.sync() }
@@ -250,7 +315,7 @@ final class ClipBaseCoreTests: XCTestCase {
 
         let tokenStore = InMemoryTokenStore()
         let syncClient = RecordingSyncClient()
-        let model = AppModel(store: store, keychain: tokenStore, syncClient: syncClient)
+        let model = AppModel(store: store, tokenStore: tokenStore, syncClient: syncClient)
         model.load()
 
         await model.login(baseURL: "https://new.example", username: "new-user", password: "secret")
@@ -278,7 +343,7 @@ final class ClipBaseCoreTests: XCTestCase {
 
         let tokenStore = InMemoryTokenStore(token: "old-token")
         let syncClient = ControlledSyncClient()
-        let model = AppModel(store: store, keychain: tokenStore, syncClient: syncClient)
+        let model = AppModel(store: store, tokenStore: tokenStore, syncClient: syncClient)
         model.load()
 
         let syncTask = Task { await model.sync() }

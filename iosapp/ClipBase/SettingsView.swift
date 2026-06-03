@@ -14,7 +14,7 @@ struct SettingsView: View {
 
                 Section("帳號") {
                     LabeledContent("使用者", value: model.snapshot.username ?? "未登入")
-                    LabeledContent("Token", value: model.isAuthenticated ? "Keychain 已儲存" : "未儲存")
+                    LabeledContent("Token", value: model.isAuthenticated ? "UserDefaults 已儲存" : "未儲存")
                 }
 
                 Section("伺服器") {

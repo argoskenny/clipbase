@@ -772,7 +772,7 @@ else:
 安全建議：
 
 - macOS：目前 personal-tool build 將 Bearer token 存 UserDefaults。
-- iOS：token 存 Keychain。
+- iOS：目前 personal-tool build 將 Bearer token 存 UserDefaults。
 - Android：token 存 EncryptedSharedPreferences 或 Keystore-backed storage。
 - 不要把密碼硬寫在 client code。
 
@@ -945,7 +945,7 @@ function applyRemote(remote, table):
 2. 所有資料都要有穩定 `id`、`updatedAt`、`deletedAt`。
 3. 所有新增/編輯/刪除都先寫本地，再排程同步。
 4. 不要硬刪資料，除非是清理非常舊的 tombstone 且確定所有平台已同步。
-5. API token 儲存位置需符合各平台目前實作；macOS 目前使用 UserDefaults，iOS 使用 Keychain。
+5. API token 儲存位置需符合各平台目前實作；macOS 與 iOS 目前使用 UserDefaults。
 6. 同步成功前不可更新 `lastSyncAt`。
 7. 收到 `401` 時重新登入。
 8. UI 列表只顯示 `deletedAt == null` 的資料。

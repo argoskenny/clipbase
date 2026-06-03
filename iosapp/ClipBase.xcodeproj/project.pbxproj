@@ -11,7 +11,7 @@
 		100000000000000000000002 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000002 /* Models.swift */; };
 		100000000000000000000003 /* DomainRules.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000003 /* DomainRules.swift */; };
 		100000000000000000000004 /* LocalStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000004 /* LocalStore.swift */; };
-		100000000000000000000005 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000005 /* KeychainStore.swift */; };
+		100000000000000000000005 /* UserDefaultsTokenStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000005 /* UserDefaultsTokenStore.swift */; };
 		100000000000000000000006 /* SyncClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000006 /* SyncClient.swift */; };
 		100000000000000000000007 /* AppModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000007 /* AppModel.swift */; };
 		100000000000000000000008 /* CSVSupport.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000008 /* CSVSupport.swift */; };
@@ -39,7 +39,7 @@
 		200000000000000000000002 /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
 		200000000000000000000003 /* DomainRules.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DomainRules.swift; sourceTree = "<group>"; };
 		200000000000000000000004 /* LocalStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalStore.swift; sourceTree = "<group>"; };
-		200000000000000000000005 /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		200000000000000000000005 /* UserDefaultsTokenStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = UserDefaultsTokenStore.swift; sourceTree = "<group>"; };
 		200000000000000000000006 /* SyncClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SyncClient.swift; sourceTree = "<group>"; };
 		200000000000000000000007 /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		200000000000000000000008 /* CSVSupport.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CSVSupport.swift; sourceTree = "<group>"; };
@@ -88,7 +88,7 @@
 				200000000000000000000002 /* Models.swift */,
 				200000000000000000000003 /* DomainRules.swift */,
 				200000000000000000000004 /* LocalStore.swift */,
-				200000000000000000000005 /* KeychainStore.swift */,
+				200000000000000000000005 /* UserDefaultsTokenStore.swift */,
 				200000000000000000000006 /* SyncClient.swift */,
 				200000000000000000000007 /* AppModel.swift */,
 				200000000000000000000008 /* CSVSupport.swift */,
@@ -222,7 +222,7 @@
 				100000000000000000000002 /* Models.swift in Sources */,
 				100000000000000000000003 /* DomainRules.swift in Sources */,
 				100000000000000000000004 /* LocalStore.swift in Sources */,
-				100000000000000000000005 /* KeychainStore.swift in Sources */,
+				100000000000000000000005 /* UserDefaultsTokenStore.swift in Sources */,
 				100000000000000000000006 /* SyncClient.swift in Sources */,
 				100000000000000000000007 /* AppModel.swift in Sources */,
 				100000000000000000000008 /* CSVSupport.swift in Sources */,

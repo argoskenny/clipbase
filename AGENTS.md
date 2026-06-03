@@ -148,14 +148,14 @@ Before changing iOS product or sync behavior, use:
 Current iOS storage:
 
 - A JSON sync snapshot in Application Support for the first native implementation.
-- Keychain for API token storage.
+- UserDefaults for Bearer API token storage.
 - The JSON snapshot must preserve stable IDs, `updatedAt`, `deletedAt`, and tombstones.
 
 Recommended future storage for larger data sets:
 
 - SQLite, SwiftData, or CoreData with the sync fields below.
 
-Do not store passwords in `UserDefaults`. iOS session tokens belong in Keychain; macOS currently stores its Bearer session token in `UserDefaults`.
+Do not store passwords in `UserDefaults`. iOS and macOS currently store Bearer session tokens in `UserDefaults` for this personal/internal build.
 
 ## Core Data Model
 
