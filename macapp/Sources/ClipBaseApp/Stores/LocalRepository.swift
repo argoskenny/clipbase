@@ -101,7 +101,7 @@ final class LocalRepository {
         for itemIndex in snapshot.items.indices where snapshot.items[itemIndex].sectionId == id && snapshot.items[itemIndex].deletedAt == nil {
             snapshot.items[itemIndex].sectionId = fallback.id
             snapshot.items[itemIndex].position += offset
-            snapshot.items[itemIndex].updatedAt = now
+            snapshot.items[itemIndex].updatedAt = max(snapshot.items[itemIndex].updatedAt, now)
         }
 
         snapshot.sections[index].deletedAt = now
@@ -607,7 +607,7 @@ final class LocalRepository {
         for itemIndex in snapshot.items.indices where snapshot.items[itemIndex].sectionId == sectionId && snapshot.items[itemIndex].deletedAt == nil {
             snapshot.items[itemIndex].sectionId = fallback.id
             snapshot.items[itemIndex].position += offset
-            snapshot.items[itemIndex].updatedAt = now
+            snapshot.items[itemIndex].updatedAt = max(snapshot.items[itemIndex].updatedAt, now)
         }
     }
 

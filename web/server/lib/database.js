@@ -170,7 +170,7 @@ export class ClipDatabase {
 
     this.db.exec("BEGIN");
     try {
-      this.db.prepare("UPDATE items SET section_id = ?, position = position + ?, updated_at = ? WHERE section_id = ? AND deleted_at IS NULL")
+      this.db.prepare("UPDATE items SET section_id = ?, position = position + ?, updated_at = MAX(updated_at, ?) WHERE section_id = ? AND deleted_at IS NULL")
         .run(fallback.id, firstPosition - 1, now, sectionId);
       this.db.prepare("UPDATE sections SET deleted_at = ? WHERE id = ?").run(now, sectionId);
       this.db.exec("COMMIT");
@@ -718,7 +718,7 @@ export class ClipDatabase {
       if (existing?.deletedAt == null && existing?.title !== "其它") {
         const fallback = this.ensureOtherSection(deletedAt);
         const firstPosition = this.firstPositionForSection(fallback.id);
-        this.db.prepare("UPDATE items SET section_id = ?, position = position + ?, updated_at = ? WHERE section_id = ? AND deleted_at IS NULL")
+        this.db.prepare("UPDATE items SET section_id = ?, position = position + ?, updated_at = MAX(updated_at, ?) WHERE section_id = ? AND deleted_at IS NULL")
           .run(fallback.id, firstPosition - 1, deletedAt, change.id);
       }
 

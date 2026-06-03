@@ -46,6 +46,78 @@ describe("API auth and sync validation", () => {
     expect(syncResponse.status).toBe(401);
   });
 
+  test("sync accepts native payloads that omit nil optional fields", async () => {
+    const token = await loginForBearerToken(baseUrl);
+
+    const response = await fetch(`${baseUrl}/api/sync`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        since: 0,
+        changes: {
+          sections: [
+            {
+              id: "native-section",
+              title: "Native Section",
+              position: 0,
+              updatedAt: 1000
+            }
+          ],
+          items: [
+            {
+              id: "native-item",
+              sectionId: "native-section",
+              name: "Native Item",
+              content: "from Swift Codable",
+              position: 0,
+              updatedAt: 1100
+            }
+          ],
+          optimizers: [
+            {
+              id: "native-optimizer",
+              title: "Native Optimizer",
+              placement: "prefix",
+              affixText: "Prefix",
+              position: 0,
+              updatedAt: 1200
+            }
+          ],
+          memoDocuments: [
+            {
+              id: "native-memo",
+              title: "Native Memo",
+              content: "copy this",
+              copyableRanges: [{ start: 0, end: 4 }],
+              position: 0,
+              updatedAt: 1300
+            }
+          ]
+        }
+      })
+    });
+
+    expect(response.status).toBe(200);
+
+    const pullResponse = await fetch(`${baseUrl}/api/sync?since=0`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const body = await pullResponse.json();
+    expect(body.changes.sections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "native-section", deletedAt: null })
+      ])
+    );
+    expect(body.changes.items).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: "native-item", metadata: null, deletedAt: null })
+      ])
+    );
+  });
+
   test("sync rejects invalid request shapes with 400", async () => {
     const token = await loginForBearerToken(baseUrl);
 

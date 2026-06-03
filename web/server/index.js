@@ -350,7 +350,7 @@ function requireString(value, path) {
 }
 
 function requireNullableString(value, path) {
-  if (value !== null && typeof value !== "string") {
+  if (value !== null && value !== undefined && typeof value !== "string") {
     throwBadRequest(`${path} 必須是字串或 null`);
   }
 }
@@ -368,7 +368,7 @@ function requireTimestamp(value, path) {
 }
 
 function requireNullableTimestamp(value, path) {
-  if (value !== null && (!Number.isInteger(value) || value <= 0)) {
+  if (value !== null && value !== undefined && (!Number.isInteger(value) || value <= 0)) {
     throwBadRequest(`${path} 必須是正整數 timestamp 或 null`);
   }
 }

@@ -94,6 +94,24 @@ final class ClipBaseCoreTests: XCTestCase {
         XCTAssertEqual(snapshot.sections.first?.deletedAt, 600)
     }
 
+    func testRemoteSectionTombstoneDoesNotMoveItemUpdatedAtBackwards() {
+        var snapshot = ClipBaseSnapshot.empty
+        snapshot.sections = [
+            ClipSection(id: "section-1", title: "Local", position: 0, updatedAt: 500, deletedAt: nil)
+        ]
+        snapshot.items = [
+            ClipItem(id: "item-1", sectionId: "section-1", name: "Newer Item", content: "value", metadata: nil, position: 0, updatedAt: 800, deletedAt: nil)
+        ]
+
+        snapshot.applyRemoteChanges(SyncChanges(sections: [
+            ClipSection(id: "section-1", title: "Deleted Remote", position: 0, updatedAt: 500, deletedAt: 600)
+        ]))
+
+        let fallbackId = snapshot.sections.first { $0.title == "其它" }?.id
+        XCTAssertEqual(snapshot.items.first?.sectionId, fallbackId)
+        XCTAssertEqual(snapshot.items.first?.updatedAt, 800)
+    }
+
     func testLocalChangesIncludeRecordsAfterLastSync() {
         var snapshot = ClipBaseSnapshot.empty
         snapshot.sections = [
@@ -247,6 +265,44 @@ final class ClipBaseCoreTests: XCTestCase {
         XCTAssertEqual(model.snapshot.sections, [])
     }
 
+    @MainActor
+    func testStaleSyncResponseAfterBaseURLChangeIsIgnored() async throws {
+        let store = LocalClipBaseStore(fileURL: temporaryStoreURL())
+        var snapshot = ClipBaseSnapshot.empty
+        snapshot.baseURL = "https://old.example"
+        snapshot.sections = [
+            ClipSection(id: "local-section", title: "Local", position: 0, updatedAt: 1_000, deletedAt: nil)
+        ]
+        snapshot.lastSyncAt = 2_000
+        try store.save(snapshot)
+
+        let tokenStore = InMemoryTokenStore(token: "old-token")
+        let syncClient = ControlledSyncClient()
+        let model = AppModel(store: store, keychain: tokenStore, syncClient: syncClient)
+        model.load()
+
+        let syncTask = Task { await model.sync() }
+        try await syncClient.waitForCallCount(1)
+
+        model.updateBaseURL("https://new.example")
+        await syncClient.resumeFirstSync(
+            serverTime: 9_000,
+            changes: SyncChanges(
+                sections: [
+                    ClipSection(id: "old-remote-section", title: "Old Remote", position: 0, updatedAt: 8_000, deletedAt: nil)
+                ],
+                items: [],
+                optimizers: [],
+                memoDocuments: []
+            )
+        )
+        await syncTask.value
+
+        XCTAssertEqual(model.snapshot.baseURL, "https://new.example")
+        XCTAssertEqual(model.snapshot.lastSyncAt, 0)
+        XCTAssertTrue(model.snapshot.sections.isEmpty)
+    }
+
     private static func readStream(_ stream: InputStream) -> Data {
         stream.open()
         defer { stream.close() }
@@ -292,8 +348,8 @@ private actor ControlledSyncClient: SyncServicing {
         return SyncResponse(serverTime: DomainRules.nowMilliseconds(), changes: SyncChanges())
     }
 
-    func resumeFirstSync(serverTime: Milliseconds) {
-        firstSyncContinuation?.resume(returning: SyncResponse(serverTime: serverTime, changes: SyncChanges()))
+    func resumeFirstSync(serverTime: Milliseconds, changes: SyncChanges = SyncChanges()) {
+        firstSyncContinuation?.resume(returning: SyncResponse(serverTime: serverTime, changes: changes))
         firstSyncContinuation = nil
     }
 

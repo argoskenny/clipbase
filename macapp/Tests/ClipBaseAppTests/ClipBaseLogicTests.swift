@@ -125,6 +125,29 @@ final class ClipBaseLogicTests: XCTestCase {
         XCTAssertEqual(repository.lastSyncAt, 5000)
     }
 
+    func testRemoteSectionTombstoneDoesNotMoveItemUpdatedAtBackwards() throws {
+        let repository = LocalRepository(fileURL: temporaryStoreURL())
+        let section = try repository.createSection(title: "待遠端刪除", now: 500)
+        let item = try repository.createItem(sectionId: section.id, name: "新版項目", content: "內容", now: 800)
+
+        try repository.applyRemoteChanges(
+            SyncChanges(
+                sections: [
+                    ClipSection(id: section.id, title: "待遠端刪除", position: 0, updatedAt: 500, deletedAt: 600)
+                ],
+                items: [],
+                optimizers: [],
+                memoDocuments: []
+            ),
+            serverTime: 900
+        )
+
+        let fallback = repository.activeSections.first { $0.title == "其它" }
+        let moved = repository.allItems.first { $0.id == item.id }
+        XCTAssertEqual(moved?.sectionId, fallback?.id)
+        XCTAssertEqual(moved?.updatedAt, 800)
+    }
+
     func testCSVImportHandlesCustomRowsAndExportsMetadataRows() throws {
         let repository = LocalRepository(fileURL: temporaryStoreURL())
         try repository.importCSVRows([
@@ -280,6 +303,47 @@ final class ClipBaseLogicTests: XCTestCase {
         XCTAssertEqual(payload.changes.sections.map(\.title), ["Edited during sync"])
 
         await syncTask.value
+    }
+
+    @MainActor
+    func testStaleSuccessfulSyncResponseAfterLogoutIsIgnored() async throws {
+        defer {
+            ControlledURLProtocol.requestHandler = nil
+        }
+
+        let repository = LocalRepository(fileURL: temporaryStoreURL())
+        _ = try repository.createSection(title: "Old Local", now: 1_000)
+        try repository.applyRemoteChanges(.empty, serverTime: 2_000)
+
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "ClipBaseTests.\(UUID().uuidString)"))
+        defaults.set("https://clipbase.test", forKey: "clipbase.apiBaseURL")
+        defaults.set("https://clipbase.test", forKey: "clipbase.lastAuthenticatedBaseURL")
+        let tokenStore = InMemoryTokenStore(token: "old-token")
+        let requestController = SyncRequestController()
+        ControlledURLProtocol.requestHandler = requestController.handle
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ControlledURLProtocol.self]
+
+        let store = ClipBaseStore(
+            repository: repository,
+            tokenStore: tokenStore,
+            apiClient: ClipBaseAPIClient(session: URLSession(configuration: configuration)),
+            defaults: defaults
+        )
+
+        let syncTask = Task { await store.syncNow(showSuccess: false) }
+        let firstRequestStarted = await requestController.waitForFirstRequest()
+        XCTAssertTrue(firstRequestStarted, "Initial sync request was not started")
+
+        await store.logout()
+        requestController.resumeFirstRequest()
+        await syncTask.value
+
+        XCTAssertTrue(repository.allSections.isEmpty)
+        XCTAssertEqual(repository.lastSyncAt, 0)
+        XCTAssertEqual(store.sections, [])
+        XCTAssertEqual(store.lastSyncAt, 0)
+        XCTAssertEqual(store.authState, .unauthenticated)
     }
 
     @MainActor

@@ -235,7 +235,7 @@ extension ClipBaseSnapshot {
             position -= 1
             items[index].sectionId = fallbackId
             items[index].position = position
-            items[index].updatedAt = now
+            items[index].updatedAt = max(items[index].updatedAt, now)
             items[index].deletedAt = nil
         }
 
@@ -648,7 +648,7 @@ extension ClipBaseSnapshot {
             position -= 1
             items[index].sectionId = fallbackId
             items[index].position = position
-            items[index].updatedAt = now
+            items[index].updatedAt = max(items[index].updatedAt, now)
         }
     }
 

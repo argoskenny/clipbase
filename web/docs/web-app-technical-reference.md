@@ -687,6 +687,7 @@ effectiveTime = max(updatedAt, deletedAt || 0)
 - 一般 UI 隱藏 `deletedAt != null` 的資料。
 - 同步 API 必須傳出 tombstone，讓其它平台知道刪除事件。
 - `lastSyncAt` 只在完整同步成功後更新。
+- Web 接收 `/api/sync` push 時，nullable 欄位如 `deletedAt`、`metadata` 可省略；省略會視為 `null`，以相容 Swift `Codable` 等 native encoder。
 
 其它平台應保留本地資料庫，不建議只依賴 memory state。
 

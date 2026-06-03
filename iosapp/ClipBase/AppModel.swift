@@ -14,6 +14,7 @@ final class AppModel: ObservableObject {
     private var token: String?
     private var pendingSync = false
     private var localChangeGeneration: UInt64 = 0
+    private var syncContextGeneration: UInt64 = 0
 
     init(
         store: LocalClipBaseStore = LocalClipBaseStore(),
@@ -50,6 +51,7 @@ final class AppModel: ObservableObject {
             }
             try keychain.saveToken(token)
             self.token = token
+            syncContextGeneration &+= 1
             if !sameBaseURL(snapshot.baseURL, normalizedBaseURL) {
                 snapshot = emptySnapshot(baseURL: normalizedBaseURL)
                 localChangeGeneration = 0
@@ -73,6 +75,8 @@ final class AppModel: ObservableObject {
         }
         keychain.deleteToken()
         token = nil
+        syncContextGeneration &+= 1
+        pendingSync = false
         snapshot.username = nil
         persist(snapshot)
         isAuthenticated = false
@@ -98,11 +102,17 @@ final class AppModel: ObservableObject {
             }
         }
 
+        let syncContextGenerationAtStart = syncContextGeneration
+        let requestBaseURL = snapshot.baseURL
+        let generationAtStart = localChangeGeneration
+        let since = snapshot.lastSyncAt
+        let changes = snapshot.localChanges(after: since)
+
         do {
-            let generationAtStart = localChangeGeneration
-            let since = snapshot.lastSyncAt
-            let changes = snapshot.localChanges(after: since)
-            let response = try await syncClient.sync(baseURL: snapshot.baseURL, token: token, since: since, changes: changes)
+            let response = try await syncClient.sync(baseURL: requestBaseURL, token: token, since: since, changes: changes)
+            guard syncContextGenerationAtStart == syncContextGeneration, self.token == token, sameBaseURL(snapshot.baseURL, requestBaseURL) else {
+                return
+            }
             let changedDuringSync = localChangeGeneration != generationAtStart
             var next = snapshot
             next.applyRemoteChanges(response.changes)
@@ -114,8 +124,13 @@ final class AppModel: ObservableObject {
             }
             notice = changes.isEmpty ? "已同步" : "本地變更已同步"
         } catch SyncClientError.unauthorized {
+            guard syncContextGenerationAtStart == syncContextGeneration, self.token == token else {
+                return
+            }
             keychain.deleteToken()
             self.token = nil
+            syncContextGeneration &+= 1
+            pendingSync = false
             isAuthenticated = false
             errorMessage = SyncClientError.unauthorized.localizedDescription
         } catch {
@@ -133,6 +148,8 @@ final class AppModel: ObservableObject {
 
         keychain.deleteToken()
         token = nil
+        syncContextGeneration &+= 1
+        pendingSync = false
         isAuthenticated = false
         snapshot = emptySnapshot(baseURL: normalizedBaseURL)
         localChangeGeneration = 0

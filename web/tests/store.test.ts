@@ -303,6 +303,33 @@ describe("ClipDatabase", () => {
     });
   });
 
+  test("remote section tombstones do not move item updatedAt backwards", () => {
+    const section = db.createSection("遠端刪除新版項目分類", 3000);
+    const item = db.createItem(section.id, "新版項目", "新版內容", null, 5000);
+
+    db.applySyncChanges({
+      sections: [
+        {
+          id: section.id,
+          title: "遠端刪除新版項目分類",
+          position: 0,
+          updatedAt: 3000,
+          deletedAt: 3500
+        }
+      ],
+      items: [],
+      optimizers: [],
+      memoDocuments: []
+    });
+
+    const changedItem = db.getSyncChanges(0).items.find((entry) => entry.id === item.id);
+    expect(changedItem).toMatchObject({
+      sectionId: db.getState().sections.find((entry) => entry.title === "其它")?.id,
+      updatedAt: 5000,
+      deletedAt: null
+    });
+  });
+
   test("applies newer memo document sync changes and ignores older ones", () => {
     const document = db.createMemoDocument("本機備忘", "本機內容", [{ start: 0, end: 2 }], 4000);
 

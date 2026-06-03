@@ -112,6 +112,8 @@ Response:
 - `updatedAt`：最後新增或編輯時間，Unix epoch milliseconds。
 - `deletedAt`：刪除時間，Unix epoch milliseconds；未刪除為 `null`。
 
+Canonical JSON 建議未刪除時明確傳 `deletedAt: null`，但 Web 接收 `/api/sync` push 時會把省略的 nullable 欄位視為 `null`，以相容 Swift `Codable` 等 native encoder 的預設輸出。這也適用於 item 的 `metadata`。
+
 衝突規則：
 
 ```txt
@@ -346,6 +348,7 @@ Response:
 - `changes.sections`、`changes.items`、`changes.optimizers`、`changes.memoDocuments` 必須都是陣列。
 - 每筆 record 必須符合上方 Data Shapes 的必填欄位與型別。
 - `updatedAt` 必須是正整數 timestamp；`deletedAt` 必須是正整數 timestamp 或 `null`。
+- Nullable 欄位如 `deletedAt`、`metadata` 可省略；Web 會視為 `null`。
 - 若任一筆 record 格式不正確，API 會回傳 `400`，且不會套用該次 request 的任何變更。
 
 ## App-Side Sync Algorithm
