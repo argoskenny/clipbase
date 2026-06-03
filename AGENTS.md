@@ -115,7 +115,7 @@ macapp/Sources/ClipBaseApp/Resources/src.csv
 macapp/src.csv
 ```
 
-The original macOS app currently stores local state via `UserDefaults`. If adding sync to `macapp/`, migrate or adapt storage so it can preserve stable IDs, `updatedAt`, and `deletedAt`.
+The macOS app stores the Bearer session token in `UserDefaults` for this personal-tool build. It stores sync data as a local JSON snapshot with stable IDs, `updatedAt`, `deletedAt`, and tombstones.
 
 ## iOS Platform
 
@@ -155,7 +155,7 @@ Recommended future storage for larger data sets:
 
 - SQLite, SwiftData, or CoreData with the sync fields below.
 
-Do not store session tokens or passwords in `UserDefaults`.
+Do not store passwords in `UserDefaults`. iOS session tokens belong in Keychain; macOS currently stores its Bearer session token in `UserDefaults`.
 
 ## Core Data Model
 

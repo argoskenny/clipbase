@@ -25,7 +25,7 @@ struct ClipBaseAPIClient {
             "tokenMode": "bearer"
         ])
 
-        let response: LoginResponse = try await perform(request)
+        let response: LoginResponse = try await perform(request, treats401AsExpiredSession: false)
         guard response.token?.isEmpty == false else {
             throw APIError.message("登入成功但伺服器未回傳 Bearer token")
         }
@@ -59,6 +59,29 @@ struct ClipBaseAPIClient {
         return try await perform(request)
     }
 
+    func clearStoredSessionData(baseURL: String) {
+        let normalized = Self.normalizedBaseURL(baseURL)
+        let host = URL(string: normalized)?.host
+        deleteClipBaseCookies(from: HTTPCookieStorage.shared, host: host)
+        deleteClipBaseCookies(from: session.configuration.httpCookieStorage, host: host)
+        URLCache.shared.removeAllCachedResponses()
+    }
+
+    private func deleteClipBaseCookies(from storage: HTTPCookieStorage?, host: String?) {
+        for cookie in storage?.cookies ?? [] where cookie.name == "clipbase_session" && cookieMatches(cookie, host: host) {
+            storage?.deleteCookie(cookie)
+        }
+    }
+
+    private func cookieMatches(_ cookie: HTTPCookie, host: String?) -> Bool {
+        guard let host else {
+            return true
+        }
+
+        let cookieDomain = cookie.domain.trimmingCharacters(in: CharacterSet(charactersIn: "."))
+        return host == cookieDomain || host.hasSuffix(".\(cookieDomain)") || cookieDomain.hasSuffix(".\(host)")
+    }
+
     private func jsonRequest(baseURL: String, path: String, method: String, token: String?) throws -> URLRequest {
         guard let url = try components(baseURL: baseURL, path: path).url else {
             throw APIError.message("API URL 無效")
@@ -83,14 +106,19 @@ struct ClipBaseAPIClient {
         return components
     }
 
-    private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
+    private func perform<T: Decodable>(_ request: URLRequest, treats401AsExpiredSession: Bool = true) async throws -> T {
         let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.message("伺服器回應格式無效")
         }
 
         if httpResponse.statusCode == 401 {
-            throw APIError.unauthorized
+            if treats401AsExpiredSession {
+                throw APIError.unauthorized
+            }
+
+            let body = try? JSONDecoder().decode(ErrorResponse.self, from: data)
+            throw APIError.message(body?.error ?? "API 請求失敗（HTTP \(httpResponse.statusCode)）")
         }
 
         guard (200..<300).contains(httpResponse.statusCode) else {

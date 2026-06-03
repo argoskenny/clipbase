@@ -504,7 +504,7 @@ CREATE TABLE sync_state (
 let now = Int64(Date().timeIntervalSince1970 * 1000)
 ```
 
-登入後儲存 token 到 Keychain，不要放在 UserDefaults。
+macOS app 目前將 Bearer token 儲存在 UserDefaults；iOS app 目前將 Bearer token 儲存在 Keychain。不要將密碼儲存在 client 端。
 
 API request header：
 

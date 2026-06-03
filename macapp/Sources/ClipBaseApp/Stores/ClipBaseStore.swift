@@ -32,7 +32,7 @@ final class ClipBaseStore: ObservableObject {
 
     init(
         repository: LocalRepository = LocalRepository(),
-        tokenStore: TokenStoring = KeychainTokenStore(),
+        tokenStore: TokenStoring = UserDefaultsTokenStore(),
         apiClient: ClipBaseAPIClient = ClipBaseAPIClient(),
         defaults: UserDefaults = .standard
     ) {
@@ -64,11 +64,11 @@ final class ClipBaseStore: ObservableObject {
 
         do {
             if try tokenStore.loadToken() == nil {
-                authState = .unauthenticated
+                resetUnauthenticatedState()
                 return
             }
         } catch {
-            authState = .unauthenticated
+            resetUnauthenticatedState()
             showError(error, fallback: "無法讀取登入狀態")
             return
         }
@@ -81,6 +81,7 @@ final class ClipBaseStore: ObservableObject {
         do {
             alert = nil
             let normalizedBaseURL = ClipBaseAPIClient.normalizedBaseURL(baseURL)
+            apiClient.clearStoredSessionData(baseURL: normalizedBaseURL)
             let response = try await apiClient.login(baseURL: normalizedBaseURL, username: username, password: password)
             guard let token = response.token else {
                 throw APIError.message("伺服器未回傳 Bearer token")
@@ -108,14 +109,12 @@ final class ClipBaseStore: ObservableObject {
     }
 
     func logout() async {
-        authGeneration &+= 1
-        pendingSync = false
-        alert = nil
-        if let token = try? tokenStore.loadToken() {
-            await apiClient.logout(baseURL: apiBaseURL, token: token)
+        let baseURL = apiBaseURL
+        let token = try? tokenStore.loadToken()
+        resetUnauthenticatedState(baseURL: baseURL)
+        if let token {
+            await apiClient.logout(baseURL: baseURL, token: token)
         }
-        try? tokenStore.deleteToken()
-        authState = .unauthenticated
     }
 
     func syncNow(showSuccess: Bool = true) async {
@@ -128,14 +127,13 @@ final class ClipBaseStore: ObservableObject {
         let authGenerationAtStart: UInt64
         do {
             guard let loadedToken = try tokenStore.loadToken() else {
-                authState = .unauthenticated
+                resetUnauthenticatedState()
                 return
             }
             token = loadedToken
             authGenerationAtStart = authGeneration
         } catch {
-            authState = .unauthenticated
-            syncMessage = "同步失敗"
+            resetUnauthenticatedState()
             showError(error, fallback: "無法讀取登入狀態")
             return
         }
@@ -181,9 +179,7 @@ final class ClipBaseStore: ObservableObject {
             guard shouldHandleUnauthorized(token: token, authGenerationAtStart: authGenerationAtStart) else {
                 return
             }
-            try? tokenStore.deleteToken()
-            authGeneration &+= 1
-            authState = .unauthenticated
+            resetUnauthenticatedState()
             syncMessage = "登入已過期"
             alert = UserFacingAlert(title: "請重新登入", message: "伺服器回傳 401，Bearer token 已失效。")
         } catch {
@@ -198,6 +194,25 @@ final class ClipBaseStore: ObservableObject {
         }
 
         return (try? tokenStore.loadToken()) == token
+    }
+
+    private func resetUnauthenticatedState(baseURL: String? = nil) {
+        let baseURLToClear = baseURL ?? apiBaseURL
+        authGeneration &+= 1
+        pendingSync = false
+        isSyncing = false
+        localChangeGeneration = 0
+        alert = nil
+        syncMessage = "尚未同步"
+
+        try? tokenStore.deleteToken()
+        apiClient.clearStoredSessionData(baseURL: baseURLToClear)
+        try? repository.resetAll()
+        defaults.removeObject(forKey: DefaultsKey.username)
+        defaults.removeObject(forKey: DefaultsKey.lastAuthenticatedBaseURL)
+
+        refreshPublishedState()
+        authState = .unauthenticated
     }
 
     func createSection(title: String) {

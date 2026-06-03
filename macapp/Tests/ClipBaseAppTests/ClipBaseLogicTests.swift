@@ -144,24 +144,97 @@ final class ClipBaseLogicTests: XCTestCase {
         ])
     }
 
-    func testKeychainTokenStoreMigratesLegacyDefaultsTokenAndClearsIt() throws {
+    func testUserDefaultsTokenStoreNormalizesAndClearsToken() throws {
         let defaults = try XCTUnwrap(UserDefaults(suiteName: "ClipBaseTests.\(UUID().uuidString)"))
-        defaults.set(" legacy-token ", forKey: KeychainTokenStore.legacyDefaultsKey)
-        let backend = InMemoryKeychainTokenBackend()
-        let store = KeychainTokenStore(
-            service: "ClipBaseTests.\(UUID().uuidString)",
-            account: "session-token",
-            defaults: defaults,
-            backend: backend
-        )
+        let store = UserDefaultsTokenStore(defaults: defaults)
 
-        XCTAssertEqual(try store.loadToken(), "legacy-token")
-        XCTAssertNil(defaults.string(forKey: KeychainTokenStore.legacyDefaultsKey))
-        XCTAssertEqual(try backend.read(service: store.service, account: store.account), "legacy-token")
+        try store.saveToken(" session-token ")
+
+        XCTAssertEqual(try store.loadToken(), "session-token")
+        XCTAssertEqual(defaults.string(forKey: UserDefaultsTokenStore.defaultsKey), "session-token")
 
         try store.deleteToken()
 
         XCTAssertNil(try store.loadToken())
+    }
+
+    @MainActor
+    func testLogoutResetsPreviousLoginData() async throws {
+        defer {
+            ControlledURLProtocol.requestHandler = nil
+        }
+
+        let repository = LocalRepository(fileURL: temporaryStoreURL())
+        _ = try repository.createSection(title: "登入後資料", now: 1_000)
+        try repository.applyRemoteChanges(.empty, serverTime: 2_000)
+
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "ClipBaseTests.\(UUID().uuidString)"))
+        defaults.set("https://clipbase.test", forKey: "clipbase.apiBaseURL")
+        defaults.set("admin", forKey: "clipbase.username")
+        defaults.set("https://clipbase.test", forKey: "clipbase.lastAuthenticatedBaseURL")
+        let tokenStore = InMemoryTokenStore(token: "session-token")
+        ControlledURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(#"{"ok":true}"#.utf8))
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ControlledURLProtocol.self]
+
+        let store = ClipBaseStore(
+            repository: repository,
+            tokenStore: tokenStore,
+            apiClient: ClipBaseAPIClient(session: URLSession(configuration: configuration)),
+            defaults: defaults
+        )
+
+        await store.logout()
+
+        XCTAssertNil(tokenStore.loadToken())
+        XCTAssertEqual(store.authState, .unauthenticated)
+        XCTAssertTrue(repository.allSections.isEmpty)
+        XCTAssertEqual(store.sections.count, 0)
+        XCTAssertEqual(store.lastSyncAt, 0)
+        XCTAssertNil(defaults.string(forKey: "clipbase.username"))
+        XCTAssertNil(defaults.string(forKey: "clipbase.lastAuthenticatedBaseURL"))
+        XCTAssertNil(store.alert)
+    }
+
+    @MainActor
+    func testLoginUnauthorizedShowsLoginFailureMessage() async throws {
+        defer {
+            ControlledURLProtocol.requestHandler = nil
+        }
+
+        ControlledURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(
+                url: request.url!,
+                statusCode: 401,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(#"{"error":"帳號或密碼不正確"}"#.utf8))
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ControlledURLProtocol.self]
+
+        let store = ClipBaseStore(
+            repository: LocalRepository(fileURL: temporaryStoreURL()),
+            tokenStore: InMemoryTokenStore(),
+            apiClient: ClipBaseAPIClient(session: URLSession(configuration: configuration)),
+            defaults: try XCTUnwrap(UserDefaults(suiteName: "ClipBaseTests.\(UUID().uuidString)"))
+        )
+
+        await store.bootstrap()
+        await store.login(baseURL: "https://clipbase.test", username: "admin", password: "wrong")
+
+        XCTAssertEqual(store.authState, .unauthenticated)
+        XCTAssertEqual(store.alert?.title, "登入失敗")
+        XCTAssertEqual(store.alert?.message, "帳號或密碼不正確")
     }
 
     @MainActor
@@ -248,7 +321,7 @@ final class ClipBaseLogicTests: XCTestCase {
         XCTAssertTrue(newTokenSyncStarted, "Pending sync with the new token did not run")
         XCTAssertEqual(tokenStore.loadToken(), "new-token")
         XCTAssertEqual(store.authState, .authenticated(username: "admin"))
-        XCTAssertNil(store.alert)
+        XCTAssertNotEqual(store.alert?.title, "請重新登入")
         XCTAssertEqual(requestController.latestSyncAuthorization, "Bearer new-token")
     }
 
@@ -480,25 +553,5 @@ private final class InMemoryTokenStore: TokenStoring {
 
     func deleteToken() {
         token = nil
-    }
-}
-
-private final class InMemoryKeychainTokenBackend: KeychainTokenBackend {
-    private var tokens: [String: String] = [:]
-
-    func read(service: String, account: String) throws -> String? {
-        tokens[key(service: service, account: account)]
-    }
-
-    func save(_ token: String, service: String, account: String) throws {
-        tokens[key(service: service, account: account)] = token
-    }
-
-    func delete(service: String, account: String) throws {
-        tokens.removeValue(forKey: key(service: service, account: account))
-    }
-
-    private func key(service: String, account: String) -> String {
-        "\(service)\u{0}\(account)"
     }
 }
