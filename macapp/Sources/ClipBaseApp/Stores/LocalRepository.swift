@@ -60,7 +60,7 @@ final class LocalRepository {
 
         let section = ClipSection(
             id: UUID().uuidString,
-            title: uniqueActiveTitle(trimmedTitle, in: snapshot.sections.map { ($0.id, $0.title, $0.deletedAt) }),
+            title: uniqueTitle(trimmedTitle, in: snapshot.sections.map { ($0.id, $0.title) }),
             position: nextPosition(snapshot.sections.map(\.position)),
             updatedAt: now,
             deletedAt: nil
@@ -80,7 +80,7 @@ final class LocalRepository {
             throw RepositoryError.notFound("找不到分類")
         }
 
-        snapshot.sections[index].title = uniqueActiveTitle(trimmedTitle, excludedId: id, in: snapshot.sections.map { ($0.id, $0.title, $0.deletedAt) })
+        snapshot.sections[index].title = uniqueTitle(trimmedTitle, excludedId: id, in: snapshot.sections.map { ($0.id, $0.title) })
         snapshot.sections[index].updatedAt = now
         snapshot.sections[index].deletedAt = nil
         try persist()
@@ -195,7 +195,7 @@ final class LocalRepository {
 
         let optimizer = PromptOptimizer(
             id: UUID().uuidString,
-            title: uniqueActiveTitle(trimmedTitle, in: snapshot.optimizers.map { ($0.id, $0.title, $0.deletedAt) }),
+            title: uniqueTitle(trimmedTitle, in: snapshot.optimizers.map { ($0.id, $0.title) }),
             placement: placement,
             affixText: trimmedAffixText,
             position: nextPosition(snapshot.optimizers.map(\.position)),
@@ -218,7 +218,7 @@ final class LocalRepository {
             throw RepositoryError.notFound("找不到優化器")
         }
 
-        snapshot.optimizers[index].title = uniqueActiveTitle(trimmedTitle, excludedId: id, in: snapshot.optimizers.map { ($0.id, $0.title, $0.deletedAt) })
+        snapshot.optimizers[index].title = uniqueTitle(trimmedTitle, excludedId: id, in: snapshot.optimizers.map { ($0.id, $0.title) })
         snapshot.optimizers[index].placement = placement
         snapshot.optimizers[index].affixText = trimmedAffixText
         snapshot.optimizers[index].updatedAt = now
@@ -244,7 +244,7 @@ final class LocalRepository {
 
         let document = MemoDocument(
             id: UUID().uuidString,
-            title: uniqueActiveTitle(trimmedTitle, in: snapshot.memoDocuments.map { ($0.id, $0.title, $0.deletedAt) }),
+            title: uniqueTitle(trimmedTitle, in: snapshot.memoDocuments.map { ($0.id, $0.title) }),
             content: content,
             copyableRanges: TextRangeHelpers.normalize(copyableRanges, content: content),
             position: nextPosition(snapshot.memoDocuments.map(\.position)),
@@ -266,7 +266,7 @@ final class LocalRepository {
             throw RepositoryError.notFound("找不到文件")
         }
 
-        snapshot.memoDocuments[index].title = uniqueActiveTitle(trimmedTitle, excludedId: id, in: snapshot.memoDocuments.map { ($0.id, $0.title, $0.deletedAt) })
+        snapshot.memoDocuments[index].title = uniqueTitle(trimmedTitle, excludedId: id, in: snapshot.memoDocuments.map { ($0.id, $0.title) })
         snapshot.memoDocuments[index].content = content
         snapshot.memoDocuments[index].copyableRanges = TextRangeHelpers.normalize(copyableRanges, content: content)
         snapshot.memoDocuments[index].updatedAt = now
@@ -497,7 +497,7 @@ final class LocalRepository {
             return
         }
 
-        let title = uniqueActiveTitle(change.title, excludedId: change.id, in: snapshot.sections.map { ($0.id, $0.title, $0.deletedAt) })
+        let title = uniqueTitle(change.title, excludedId: change.id, in: snapshot.sections.map { ($0.id, $0.title) })
         upsert(ClipSection(id: change.id, title: title, position: change.position, updatedAt: updatedAt, deletedAt: nil), in: &snapshot.sections)
     }
 
@@ -535,7 +535,7 @@ final class LocalRepository {
             return
         }
 
-        let title = uniqueActiveTitle(change.title, excludedId: change.id, in: snapshot.optimizers.map { ($0.id, $0.title, $0.deletedAt) })
+        let title = uniqueTitle(change.title, excludedId: change.id, in: snapshot.optimizers.map { ($0.id, $0.title) })
         upsert(
             PromptOptimizer(
                 id: change.id,
@@ -558,7 +558,7 @@ final class LocalRepository {
             return
         }
 
-        let title = uniqueActiveTitle(change.title, excludedId: change.id, in: snapshot.memoDocuments.map { ($0.id, $0.title, $0.deletedAt) })
+        let title = uniqueTitle(change.title, excludedId: change.id, in: snapshot.memoDocuments.map { ($0.id, $0.title) })
         upsert(
             MemoDocument(
                 id: change.id,
@@ -703,12 +703,10 @@ private func nextPosition(_ positions: [Int]) -> Int {
     (positions.max() ?? -1) + 1
 }
 
-private func uniqueActiveTitle(_ proposedTitle: String, excludedId: String? = nil, in records: [(id: String, title: String, deletedAt: Int64?)]) -> String {
+private func uniqueTitle(_ proposedTitle: String, excludedId: String? = nil, in records: [(id: String, title: String)]) -> String {
     func exists(_ title: String) -> Bool {
         records.contains { record in
-            record.deletedAt == nil &&
-            record.title == title &&
-            record.id != excludedId
+            record.title == title && record.id != excludedId
         }
     }
 

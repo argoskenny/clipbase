@@ -148,6 +148,30 @@ final class ClipBaseLogicTests: XCTestCase {
         XCTAssertEqual(moved?.updatedAt, 800)
     }
 
+    func testTitlesStayUniqueAgainstTombstonesForWebCompatibility() throws {
+        let repository = LocalRepository(fileURL: temporaryStoreURL())
+        let deletedSection = try repository.createSection(title: "封存名稱", now: 100)
+        try repository.deleteSection(id: deletedSection.id, now: 200)
+
+        let recreatedSection = try repository.createSection(title: "封存名稱", now: 300)
+
+        XCTAssertEqual(recreatedSection.title, "封存名稱 (2)")
+
+        let deletedOptimizer = try repository.createOptimizer(title: "封存優化器", placement: .prefix, affixText: "old", now: 400)
+        try repository.deleteOptimizer(id: deletedOptimizer.id, now: 500)
+
+        let recreatedOptimizer = try repository.createOptimizer(title: "封存優化器", placement: .suffix, affixText: "new", now: 600)
+
+        XCTAssertEqual(recreatedOptimizer.title, "封存優化器 (2)")
+
+        let deletedMemo = try repository.createMemoDocument(title: "封存文件", content: "old", copyableRanges: [], now: 700)
+        try repository.deleteMemoDocument(id: deletedMemo.id, now: 800)
+
+        let recreatedMemo = try repository.createMemoDocument(title: "封存文件", content: "new", copyableRanges: [], now: 900)
+
+        XCTAssertEqual(recreatedMemo.title, "封存文件 (2)")
+    }
+
     func testCSVImportHandlesCustomRowsAndExportsMetadataRows() throws {
         let repository = LocalRepository(fileURL: temporaryStoreURL())
         try repository.importCSVRows([
