@@ -76,6 +76,75 @@ describe("API auth and sync validation", () => {
       })
     });
     expect(wrongBucketTypeResponse.status).toBe(400);
+
+    const malformedRecordResponse = await fetch(`${baseUrl}/api/sync`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        since: 0,
+        changes: {
+          sections: [
+            {
+              id: "section-before-invalid-item",
+              title: "不應被套用",
+              position: 0,
+              updatedAt: 1000,
+              deletedAt: null
+            }
+          ],
+          items: [
+            {
+              id: "invalid-item",
+              sectionId: "section-before-invalid-item",
+              content: "missing name",
+              position: 0,
+              updatedAt: 1000,
+              deletedAt: null
+            }
+          ],
+          optimizers: [],
+          memoDocuments: []
+        }
+      })
+    });
+    expect(malformedRecordResponse.status).toBe(400);
+
+    const pullResponse = await fetch(`${baseUrl}/api/sync?since=0`, {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    const pullBody = await pullResponse.json();
+    expect(pullBody.changes.sections.some((section: { id: string }) => section.id === "section-before-invalid-item")).toBe(false);
+
+    const invalidEnumResponse = await fetch(`${baseUrl}/api/sync`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        since: 0,
+        changes: {
+          sections: [],
+          items: [],
+          optimizers: [
+            {
+              id: "invalid-optimizer",
+              title: "Bad",
+              placement: "middle",
+              affixText: "text",
+              position: 0,
+              updatedAt: 1000,
+              deletedAt: null
+            }
+          ],
+          memoDocuments: []
+        }
+      })
+    });
+    expect(invalidEnumResponse.status).toBe(400);
   });
 });
 

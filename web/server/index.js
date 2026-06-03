@@ -275,7 +275,109 @@ function validateSyncRequestBody(body) {
     }
   }
 
+  changes.sections.forEach((section, index) => validateSectionSyncRecord(section, `changes.sections[${index}]`));
+  changes.items.forEach((item, index) => validateItemSyncRecord(item, `changes.items[${index}]`));
+  changes.optimizers.forEach((optimizer, index) => validateOptimizerSyncRecord(optimizer, `changes.optimizers[${index}]`));
+  changes.memoDocuments.forEach((document, index) => validateMemoDocumentSyncRecord(document, `changes.memoDocuments[${index}]`));
+
   return { since, changes };
+}
+
+function validateSectionSyncRecord(record, path) {
+  validateRecordObject(record, path);
+  requireNonEmptyString(record.id, `${path}.id`);
+  requireNonEmptyString(record.title, `${path}.title`);
+  requireInteger(record.position, `${path}.position`);
+  requireTimestamp(record.updatedAt, `${path}.updatedAt`);
+  requireNullableTimestamp(record.deletedAt, `${path}.deletedAt`);
+}
+
+function validateItemSyncRecord(record, path) {
+  validateRecordObject(record, path);
+  requireNonEmptyString(record.id, `${path}.id`);
+  requireNonEmptyString(record.sectionId, `${path}.sectionId`);
+  requireNonEmptyString(record.name, `${path}.name`);
+  requireString(record.content, `${path}.content`);
+  requireNullableString(record.metadata, `${path}.metadata`);
+  requireInteger(record.position, `${path}.position`);
+  requireTimestamp(record.updatedAt, `${path}.updatedAt`);
+  requireNullableTimestamp(record.deletedAt, `${path}.deletedAt`);
+}
+
+function validateOptimizerSyncRecord(record, path) {
+  validateRecordObject(record, path);
+  requireNonEmptyString(record.id, `${path}.id`);
+  requireNonEmptyString(record.title, `${path}.title`);
+  if (!["prefix", "suffix"].includes(record.placement)) {
+    throwBadRequest(`${path}.placement 必須是 prefix 或 suffix`);
+  }
+  requireString(record.affixText, `${path}.affixText`);
+  requireInteger(record.position, `${path}.position`);
+  requireTimestamp(record.updatedAt, `${path}.updatedAt`);
+  requireNullableTimestamp(record.deletedAt, `${path}.deletedAt`);
+}
+
+function validateMemoDocumentSyncRecord(record, path) {
+  validateRecordObject(record, path);
+  requireNonEmptyString(record.id, `${path}.id`);
+  requireNonEmptyString(record.title, `${path}.title`);
+  requireString(record.content, `${path}.content`);
+  if (!Array.isArray(record.copyableRanges)) {
+    throwBadRequest(`${path}.copyableRanges 必須是陣列`);
+  }
+  record.copyableRanges.forEach((range, index) => validateTextRange(range, `${path}.copyableRanges[${index}]`));
+  requireInteger(record.position, `${path}.position`);
+  requireTimestamp(record.updatedAt, `${path}.updatedAt`);
+  requireNullableTimestamp(record.deletedAt, `${path}.deletedAt`);
+}
+
+function validateRecordObject(record, path) {
+  if (!record || typeof record !== "object" || Array.isArray(record)) {
+    throwBadRequest(`${path} 必須是物件`);
+  }
+}
+
+function requireNonEmptyString(value, path) {
+  if (typeof value !== "string" || !value.trim()) {
+    throwBadRequest(`${path} 必須是非空白字串`);
+  }
+}
+
+function requireString(value, path) {
+  if (typeof value !== "string") {
+    throwBadRequest(`${path} 必須是字串`);
+  }
+}
+
+function requireNullableString(value, path) {
+  if (value !== null && typeof value !== "string") {
+    throwBadRequest(`${path} 必須是字串或 null`);
+  }
+}
+
+function requireInteger(value, path) {
+  if (!Number.isInteger(value)) {
+    throwBadRequest(`${path} 必須是整數`);
+  }
+}
+
+function requireTimestamp(value, path) {
+  if (!Number.isInteger(value) || value <= 0) {
+    throwBadRequest(`${path} 必須是正整數 timestamp`);
+  }
+}
+
+function requireNullableTimestamp(value, path) {
+  if (value !== null && (!Number.isInteger(value) || value <= 0)) {
+    throwBadRequest(`${path} 必須是正整數 timestamp 或 null`);
+  }
+}
+
+function validateTextRange(range, path) {
+  validateRecordObject(range, path);
+  if (!Number.isInteger(range.start) || !Number.isInteger(range.end) || range.start < 0 || range.end <= range.start) {
+    throwBadRequest(`${path} 必須包含有效的 start/end`);
+  }
 }
 
 function parseSyncSince(value) {

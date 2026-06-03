@@ -124,6 +124,36 @@ final class ClipBaseCoreTests: XCTestCase {
         XCTAssertTrue(csv.contains(",Token,\"'  =IMPORTXML(\"\"https://example.com\"\")\""))
     }
 
+    func testCSVImportUpsertsClipRecordsAndKeepsTombstones() {
+        var snapshot = ClipBaseSnapshot.empty
+        snapshot.sections = [
+            ClipSection(id: "section-1", title: "帳號", position: 0, updatedAt: 1_000, deletedAt: nil),
+            ClipSection(id: "removed-section", title: "已移除", position: 1, updatedAt: 1_300, deletedAt: nil)
+        ]
+        snapshot.items = [
+            ClipItem(id: "email", sectionId: "section-1", name: "Email", content: "old@example.com", metadata: nil, position: 0, updatedAt: 1_100, deletedAt: nil),
+            ClipItem(id: "legacy", sectionId: "section-1", name: "Legacy", content: "old-value", metadata: nil, position: 1, updatedAt: 1_200, deletedAt: nil),
+            ClipItem(id: "removed-item", sectionId: "removed-section", name: "Token", content: "removed", metadata: nil, position: 0, updatedAt: 1_400, deletedAt: nil)
+        ]
+
+        snapshot.importCSVRows([
+            CSVRow(section: "帳號", subsection: "", field: "Email", value: "new@example.com"),
+            CSVRow(section: "帳號", subsection: "Phone", field: "Main", value: "0912")
+        ], now: 5_000)
+
+        let accountSection = snapshot.activeSections.first { $0.title == "帳號" }
+        XCTAssertEqual(accountSection?.id, "section-1")
+        XCTAssertEqual(accountSection?.updatedAt, 5_000)
+        XCTAssertEqual(snapshot.sections.first { $0.id == "removed-section" }?.deletedAt, 5_000)
+
+        let accountItems = snapshot.activeItems(in: "section-1")
+        XCTAssertEqual(accountItems.first { $0.name == "Email" }?.id, "email")
+        XCTAssertEqual(accountItems.first { $0.name == "Email" }?.content, "new@example.com")
+        XCTAssertEqual(accountItems.first { $0.name == "Phone / Main" }?.content, "0912")
+        XCTAssertEqual(snapshot.items.first { $0.id == "legacy" }?.deletedAt, 5_000)
+        XCTAssertEqual(snapshot.items.first { $0.id == "removed-item" }?.deletedAt, 5_000)
+    }
+
     func testNativeLoginPayloadAndInvalidCredentialMessage() async throws {
         MockURLProtocol.requestHandler = { request in
             let body = try XCTUnwrap(request.httpBodyStream.flatMap(Self.readStream) ?? request.httpBody)
@@ -159,6 +189,64 @@ final class ClipBaseCoreTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testSyncQueuesLocalChangesMadeDuringInFlightSync() async throws {
+        let store = LocalClipBaseStore(fileURL: temporaryStoreURL())
+        var snapshot = ClipBaseSnapshot.empty
+        snapshot.sections = [
+            ClipSection(id: "section-1", title: "Original", position: 0, updatedAt: 1_000, deletedAt: nil)
+        ]
+        snapshot.lastSyncAt = 2_000
+        try store.save(snapshot)
+
+        let tokenStore = InMemoryTokenStore(token: "session-token")
+        let syncClient = ControlledSyncClient()
+        let model = AppModel(store: store, keychain: tokenStore, syncClient: syncClient)
+        model.load()
+
+        let syncTask = Task { await model.sync() }
+        try await syncClient.waitForCallCount(1)
+
+        model.updateSection(id: "section-1", title: "Edited during sync")
+        await model.sync()
+        await syncClient.resumeFirstSync(serverTime: DomainRules.nowMilliseconds() + 100_000)
+
+        try await syncClient.waitForCallCount(2)
+        let secondChanges = await syncClient.changesForCall(at: 1)
+        XCTAssertEqual(secondChanges?.sections.map(\.title), ["Edited during sync"])
+
+        await syncTask.value
+    }
+
+    @MainActor
+    func testLoginToDifferentBaseURLResetsSnapshotBeforeSyncing() async throws {
+        let store = LocalClipBaseStore(fileURL: temporaryStoreURL())
+        var snapshot = ClipBaseSnapshot.empty
+        snapshot.baseURL = "https://old.example"
+        snapshot.username = "old-user"
+        snapshot.lastSyncAt = 1_000
+        snapshot.sections = [
+            ClipSection(id: "old-section", title: "Old dirty data", position: 0, updatedAt: 2_000, deletedAt: nil)
+        ]
+        try store.save(snapshot)
+
+        let tokenStore = InMemoryTokenStore()
+        let syncClient = RecordingSyncClient()
+        let model = AppModel(store: store, keychain: tokenStore, syncClient: syncClient)
+        model.load()
+
+        await model.login(baseURL: "https://new.example", username: "new-user", password: "secret")
+
+        let optionalFirstCall = await syncClient.syncCall(at: 0)
+        let firstCall = try XCTUnwrap(optionalFirstCall)
+        XCTAssertEqual(firstCall.baseURL, "https://new.example")
+        XCTAssertEqual(firstCall.since, 0)
+        XCTAssertTrue(firstCall.changes.isEmpty)
+        XCTAssertEqual(model.snapshot.baseURL, "https://new.example")
+        XCTAssertEqual(model.snapshot.username, "new-user")
+        XCTAssertEqual(model.snapshot.sections, [])
+    }
+
     private static func readStream(_ stream: InputStream) -> Data {
         stream.open()
         defer { stream.close() }
@@ -174,6 +262,101 @@ final class ClipBaseCoreTests: XCTestCase {
             }
         }
         return data
+    }
+
+    private func temporaryStoreURL() -> URL {
+        FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString, isDirectory: true)
+            .appendingPathComponent("clipbase-state.json")
+    }
+}
+
+private actor ControlledSyncClient: SyncServicing {
+    private var calls: [(since: Milliseconds, changes: SyncChanges)] = []
+    private var firstSyncContinuation: CheckedContinuation<SyncResponse, Never>?
+
+    func login(baseURL: String, username: String, password: String) async throws -> LoginResponse {
+        LoginResponse(username: username, token: "session-token")
+    }
+
+    func logout(baseURL: String, token: String) async {
+    }
+
+    func sync(baseURL: String, token: String, since: Milliseconds, changes: SyncChanges) async throws -> SyncResponse {
+        calls.append((since: since, changes: changes))
+        if calls.count == 1 {
+            return await withCheckedContinuation { continuation in
+                firstSyncContinuation = continuation
+            }
+        }
+        return SyncResponse(serverTime: DomainRules.nowMilliseconds(), changes: SyncChanges())
+    }
+
+    func resumeFirstSync(serverTime: Milliseconds) {
+        firstSyncContinuation?.resume(returning: SyncResponse(serverTime: serverTime, changes: SyncChanges()))
+        firstSyncContinuation = nil
+    }
+
+    func changesForCall(at index: Int) -> SyncChanges? {
+        guard calls.indices.contains(index) else {
+            return nil
+        }
+        return calls[index].changes
+    }
+
+    func waitForCallCount(_ expected: Int) async throws {
+        for _ in 0..<50 {
+            if calls.count >= expected {
+                return
+            }
+            try await Task.sleep(nanoseconds: 20_000_000)
+        }
+        throw NSError(domain: "ClipBaseCoreTests", code: 1, userInfo: [
+            NSLocalizedDescriptionKey: "Timed out waiting for sync call \(expected)"
+        ])
+    }
+}
+
+private actor RecordingSyncClient: SyncServicing {
+    private var syncCalls: [(baseURL: String, since: Milliseconds, changes: SyncChanges)] = []
+
+    func login(baseURL: String, username: String, password: String) async throws -> LoginResponse {
+        LoginResponse(username: username, token: "session-token")
+    }
+
+    func logout(baseURL: String, token: String) async {
+    }
+
+    func sync(baseURL: String, token: String, since: Milliseconds, changes: SyncChanges) async throws -> SyncResponse {
+        syncCalls.append((baseURL: baseURL, since: since, changes: changes))
+        return SyncResponse(serverTime: 5_000, changes: SyncChanges())
+    }
+
+    func syncCall(at index: Int) -> (baseURL: String, since: Milliseconds, changes: SyncChanges)? {
+        guard syncCalls.indices.contains(index) else {
+            return nil
+        }
+        return syncCalls[index]
+    }
+}
+
+private final class InMemoryTokenStore: TokenStoring {
+    private var token: String?
+
+    init(token: String? = nil) {
+        self.token = token
+    }
+
+    func readToken() -> String? {
+        token
+    }
+
+    func saveToken(_ token: String) throws {
+        self.token = token
+    }
+
+    func deleteToken() {
+        token = nil
     }
 }
 

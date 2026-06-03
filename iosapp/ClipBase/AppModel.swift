@@ -9,13 +9,15 @@ final class AppModel: ObservableObject {
     @Published var notice: String?
 
     private let store: LocalClipBaseStore
-    private let keychain: KeychainStore
+    private let keychain: TokenStoring
     private let syncClient: SyncServicing
     private var token: String?
+    private var pendingSync = false
+    private var localChangeGeneration: UInt64 = 0
 
     init(
         store: LocalClipBaseStore = LocalClipBaseStore(),
-        keychain: KeychainStore = KeychainStore(),
+        keychain: TokenStoring = KeychainStore(),
         syncClient: SyncServicing = SyncClient()
     ) {
         self.store = store
@@ -48,6 +50,10 @@ final class AppModel: ObservableObject {
             }
             try keychain.saveToken(token)
             self.token = token
+            if !sameBaseURL(snapshot.baseURL, normalizedBaseURL) {
+                snapshot = emptySnapshot(baseURL: normalizedBaseURL)
+                localChangeGeneration = 0
+            }
             snapshot.baseURL = normalizedBaseURL
             snapshot.username = response.username
             try store.save(snapshot)
@@ -78,22 +84,34 @@ final class AppModel: ObservableObject {
             return
         }
         if isSyncing {
+            pendingSync = true
             return
         }
 
         errorMessage = nil
         isSyncing = true
-        defer { isSyncing = false }
+        defer {
+            isSyncing = false
+            if pendingSync {
+                pendingSync = false
+                Task { await sync() }
+            }
+        }
 
         do {
+            let generationAtStart = localChangeGeneration
             let since = snapshot.lastSyncAt
             let changes = snapshot.localChanges(after: since)
             let response = try await syncClient.sync(baseURL: snapshot.baseURL, token: token, since: since, changes: changes)
+            let changedDuringSync = localChangeGeneration != generationAtStart
             var next = snapshot
             next.applyRemoteChanges(response.changes)
-            next.lastSyncAt = response.serverTime
+            next.lastSyncAt = changedDuringSync ? since : response.serverTime
             snapshot = next
             try store.save(snapshot)
+            if changedDuringSync {
+                pendingSync = true
+            }
             notice = changes.isEmpty ? "已同步" : "本地變更已同步"
         } catch SyncClientError.unauthorized {
             keychain.deleteToken()
@@ -106,7 +124,18 @@ final class AppModel: ObservableObject {
     }
 
     func updateBaseURL(_ baseURL: String) {
-        snapshot.baseURL = normalizeBaseURL(baseURL)
+        let normalizedBaseURL = normalizeBaseURL(baseURL)
+        guard !sameBaseURL(snapshot.baseURL, normalizedBaseURL) else {
+            snapshot.baseURL = normalizedBaseURL
+            persist(snapshot)
+            return
+        }
+
+        keychain.deleteToken()
+        token = nil
+        isAuthenticated = false
+        snapshot = emptySnapshot(baseURL: normalizedBaseURL)
+        localChangeGeneration = 0
         persist(snapshot)
     }
 
@@ -225,6 +254,7 @@ final class AppModel: ObservableObject {
             let id = try operation(&next)
             snapshot = next
             try store.save(snapshot)
+            localChangeGeneration &+= 1
             Task { await sync() }
             return id
         } catch {
@@ -244,5 +274,21 @@ final class AppModel: ObservableObject {
     private func normalizeBaseURL(_ value: String) -> String {
         let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
         return trimmed.isEmpty ? ClipBaseSnapshot.empty.baseURL : trimmed
+    }
+
+    private func sameBaseURL(_ left: String, _ right: String) -> Bool {
+        canonicalBaseURL(left) == canonicalBaseURL(right)
+    }
+
+    private func canonicalBaseURL(_ value: String) -> String {
+        value
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+    }
+
+    private func emptySnapshot(baseURL: String) -> ClipBaseSnapshot {
+        var snapshot = ClipBaseSnapshot.empty
+        snapshot.baseURL = baseURL
+        return snapshot
     }
 }

@@ -340,6 +340,14 @@ Response:
 4. 套用 `memoDocuments`
 5. 回傳 server 端 `since` 之後的所有變更
 
+驗證規則：
+
+- `since` 必須是非負數字。
+- `changes.sections`、`changes.items`、`changes.optimizers`、`changes.memoDocuments` 必須都是陣列。
+- 每筆 record 必須符合上方 Data Shapes 的必填欄位與型別。
+- `updatedAt` 必須是正整數 timestamp；`deletedAt` 必須是正整數 timestamp 或 `null`。
+- 若任一筆 record 格式不正確，API 會回傳 `400`，且不會套用該次 request 的任何變更。
+
 ## App-Side Sync Algorithm
 
 其它平台 app 建議使用本地資料庫，至少要有同樣的四類資料表與同步欄位。

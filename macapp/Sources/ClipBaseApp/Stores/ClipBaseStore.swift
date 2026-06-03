@@ -22,15 +22,17 @@ final class ClipBaseStore: ObservableObject {
     @Published var alert: UserFacingAlert?
 
     private let repository: LocalRepository
-    private let tokenStore: UserDefaultsTokenStore
+    private let tokenStore: TokenStoring
     private let apiClient: ClipBaseAPIClient
     private let defaults: UserDefaults
     private var bootstrapped = false
     private var pendingSync = false
+    private var localChangeGeneration: UInt64 = 0
+    private var authGeneration: UInt64 = 0
 
     init(
         repository: LocalRepository = LocalRepository(),
-        tokenStore: UserDefaultsTokenStore = UserDefaultsTokenStore(),
+        tokenStore: TokenStoring = KeychainTokenStore(),
         apiClient: ClipBaseAPIClient = ClipBaseAPIClient(),
         defaults: UserDefaults = .standard
     ) {
@@ -60,8 +62,14 @@ final class ClipBaseStore: ObservableObject {
         guard !bootstrapped else { return }
         bootstrapped = true
 
-        if tokenStore.loadToken() == nil {
+        do {
+            if try tokenStore.loadToken() == nil {
+                authState = .unauthenticated
+                return
+            }
+        } catch {
             authState = .unauthenticated
+            showError(error, fallback: "無法讀取登入狀態")
             return
         }
 
@@ -71,6 +79,7 @@ final class ClipBaseStore: ObservableObject {
 
     func login(baseURL: String, username: String, password: String) async {
         do {
+            alert = nil
             let normalizedBaseURL = ClipBaseAPIClient.normalizedBaseURL(baseURL)
             let response = try await apiClient.login(baseURL: normalizedBaseURL, username: username, password: password)
             guard let token = response.token else {
@@ -81,7 +90,8 @@ final class ClipBaseStore: ObservableObject {
                 try repository.resetAll()
             }
 
-            tokenStore.saveToken(token)
+            try tokenStore.saveToken(token)
+            authGeneration &+= 1
             apiBaseURL = normalizedBaseURL
             savedUsername = response.username
             lastAuthenticatedBaseURL = normalizedBaseURL
@@ -98,10 +108,13 @@ final class ClipBaseStore: ObservableObject {
     }
 
     func logout() async {
-        if let token = tokenStore.loadToken() {
+        authGeneration &+= 1
+        pendingSync = false
+        alert = nil
+        if let token = try? tokenStore.loadToken() {
             await apiClient.logout(baseURL: apiBaseURL, token: token)
         }
-        tokenStore.deleteToken()
+        try? tokenStore.deleteToken()
         authState = .unauthenticated
     }
 
@@ -110,8 +123,20 @@ final class ClipBaseStore: ObservableObject {
             pendingSync = true
             return
         }
-        guard let token = tokenStore.loadToken() else {
+
+        let token: String
+        let authGenerationAtStart: UInt64
+        do {
+            guard let loadedToken = try tokenStore.loadToken() else {
+                authState = .unauthenticated
+                return
+            }
+            token = loadedToken
+            authGenerationAtStart = authGeneration
+        } catch {
             authState = .unauthenticated
+            syncMessage = "同步失敗"
+            showError(error, fallback: "無法讀取登入狀態")
             return
         }
 
@@ -126,6 +151,7 @@ final class ClipBaseStore: ObservableObject {
         }
 
         do {
+            let generationAtStart = localChangeGeneration
             let since = repository.lastSyncAt
             let changes = repository.localChanges(after: since)
             let response: ClipBaseAPIClient.SyncResponse
@@ -134,14 +160,29 @@ final class ClipBaseStore: ObservableObject {
             } else {
                 response = try await apiClient.sync(baseURL: apiBaseURL, token: token, since: since, changes: changes)
             }
-            try repository.applyRemoteChanges(response.changes, serverTime: response.serverTime)
+            guard authGenerationAtStart == authGeneration else {
+                return
+            }
+            let changedDuringSync = localChangeGeneration != generationAtStart
+            try repository.applyRemoteChanges(
+                response.changes,
+                serverTime: response.serverTime,
+                preserveLastSyncAt: changedDuringSync
+            )
+            if changedDuringSync {
+                pendingSync = true
+            }
             refreshPublishedState()
             syncMessage = "已同步 \(formatSyncTime(response.serverTime))"
             if showSuccess {
                 flash(title: "同步完成", message: "本機與 Web 已完成同步")
             }
         } catch APIError.unauthorized {
-            tokenStore.deleteToken()
+            guard shouldHandleUnauthorized(token: token, authGenerationAtStart: authGenerationAtStart) else {
+                return
+            }
+            try? tokenStore.deleteToken()
+            authGeneration &+= 1
             authState = .unauthenticated
             syncMessage = "登入已過期"
             alert = UserFacingAlert(title: "請重新登入", message: "伺服器回傳 401，Bearer token 已失效。")
@@ -149,6 +190,14 @@ final class ClipBaseStore: ObservableObject {
             syncMessage = "同步失敗"
             showError(error, fallback: "同步失敗")
         }
+    }
+
+    private func shouldHandleUnauthorized(token: String, authGenerationAtStart: UInt64) -> Bool {
+        guard authGenerationAtStart == authGeneration else {
+            return false
+        }
+
+        return (try? tokenStore.loadToken()) == token
     }
 
     func createSection(title: String) {
@@ -250,6 +299,7 @@ final class ClipBaseStore: ObservableObject {
             let text = try String(contentsOf: url, encoding: .utf8)
             let rows = CSVService.parse(text)
             try repository.importCSVRows(rows)
+            localChangeGeneration &+= 1
             refreshPublishedState()
             scheduleSync()
             flash(title: "CSV 已匯入", message: "剪貼內容已依四欄格式更新")
@@ -284,6 +334,7 @@ final class ClipBaseStore: ObservableObject {
             let data = try Data(contentsOf: url)
             let backup = try JSONDecoder.clipBase.decode(ClipBaseBackup.self, from: data)
             try repository.restoreBackup(backup)
+            localChangeGeneration &+= 1
             refreshPublishedState()
             scheduleSync()
             flash(title: "備份已還原", message: "本機資料已套用備份內容")
@@ -333,6 +384,7 @@ final class ClipBaseStore: ObservableObject {
     private func performLocalChange(_ action: () throws -> Void) {
         do {
             try action()
+            localChangeGeneration &+= 1
             refreshPublishedState()
             scheduleSync()
         } catch {

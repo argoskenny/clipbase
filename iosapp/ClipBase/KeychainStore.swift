@@ -1,6 +1,12 @@
 import Foundation
 import Security
 
+protocol TokenStoring {
+    func readToken() -> String?
+    func saveToken(_ token: String) throws
+    func deleteToken()
+}
+
 final class KeychainStore {
     private let service: String
     private let account: String
@@ -46,6 +52,8 @@ final class KeychainStore {
         ]
     }
 }
+
+extension KeychainStore: TokenStoring {}
 
 enum KeychainError: LocalizedError {
     case unhandled(OSStatus)

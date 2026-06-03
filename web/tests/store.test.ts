@@ -1,7 +1,7 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { afterEach, beforeEach, describe, expect, test } from "vitest";
+import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { ClipDatabase } from "../server/lib/database.js";
 
 describe("ClipDatabase", () => {
@@ -14,6 +14,7 @@ describe("ClipDatabase", () => {
   });
 
   afterEach(() => {
+    vi.restoreAllMocks();
     db.close();
     rmSync(dir, { recursive: true, force: true });
   });
@@ -50,6 +51,67 @@ describe("ClipDatabase", () => {
       { section: "自定義", subsection: "Token", field: "訊息", value: "abc" },
       { section: "自定義", subsection: "Token", field: "建立時間", value: "2026/01/02" }
     ]);
+  });
+
+  test("imports CSV rows by upserting active clip records and tombstoning removed ones", () => {
+    const section = db.createSection("帳號", 1000);
+    const email = db.createItem(section.id, "Email", "old@example.com", null, 1100);
+    const removedItem = db.createItem(section.id, "Legacy", "old-value", null, 1200);
+    const removedSection = db.createSection("已移除", 1300);
+    const removedSectionItem = db.createItem(removedSection.id, "Token", "removed", null, 1400);
+
+    vi.spyOn(Date, "now").mockReturnValue(5000);
+
+    db.importRows([
+      { section: "帳號", subsection: "", field: "Email", value: "new@example.com" },
+      { section: "帳號", subsection: "Phone", field: "Main", value: "0912" }
+    ]);
+
+    const state = db.getState();
+    const accountSection = state.sections.find((entry) => entry.title === "帳號");
+    expect(accountSection?.id).toBe(section.id);
+    expect(accountSection?.items.find((entry: { name: string }) => entry.name === "Email")).toMatchObject({
+      id: email.id,
+      content: "new@example.com"
+    });
+    expect(accountSection?.items.find((entry: { id: string }) => entry.id === removedItem.id)).toBeUndefined();
+    expect(state.sections.some((entry) => entry.id === removedSection.id)).toBe(false);
+
+    const changes = db.getSyncChanges(0);
+    expect(changes.sections.find((entry) => entry.id === section.id)).toMatchObject({
+      id: section.id,
+      title: "帳號",
+      updatedAt: 5000,
+      deletedAt: null
+    });
+    expect(changes.sections.find((entry) => entry.id === removedSection.id)).toMatchObject({
+      id: removedSection.id,
+      title: "已移除",
+      updatedAt: 1300,
+      deletedAt: 5000
+    });
+    expect(changes.items.find((entry) => entry.id === email.id)).toMatchObject({
+      id: email.id,
+      sectionId: section.id,
+      name: "Email",
+      content: "new@example.com",
+      updatedAt: 5000,
+      deletedAt: null
+    });
+    expect(changes.items.find((entry) => entry.id === removedItem.id)).toMatchObject({
+      id: removedItem.id,
+      sectionId: section.id,
+      name: "Legacy",
+      updatedAt: 1200,
+      deletedAt: 5000
+    });
+    expect(changes.items.find((entry) => entry.id === removedSectionItem.id)).toMatchObject({
+      id: removedSectionItem.id,
+      sectionId: removedSection.id,
+      name: "Token",
+      updatedAt: 1400,
+      deletedAt: 5000
+    });
   });
 
   test("adds and moves items between sections", () => {

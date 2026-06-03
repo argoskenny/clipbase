@@ -442,13 +442,6 @@ extension ClipBaseSnapshot {
     }
 
     mutating func importCSVRows(_ rows: [CSVRow], now: Milliseconds = DomainRules.nowMilliseconds()) {
-        for index in sections.indices where sections[index].deletedAt == nil {
-            sections[index].deletedAt = now
-        }
-        for index in items.indices where items[index].deletedAt == nil {
-            items[index].deletedAt = now
-        }
-
         var sectionOrder: [String] = []
         var regularItemsBySection: [String: [(name: String, content: String, metadata: String?)]] = [:]
         var customGroups: [String: (section: String, name: String, message: String?, createdAt: String?)] = [:]
@@ -478,9 +471,28 @@ extension ClipBaseSnapshot {
             regularItemsBySection[row.section, default: []].append((name: itemName, content: row.value, metadata: nil))
         }
 
+        var usedSectionIds = Set<String>()
+        var desiredItems: [(sectionId: String, name: String, content: String, metadata: String?, position: Int)] = []
+
         for (sectionIndex, title) in sectionOrder.enumerated() {
-            let sectionId = UUID().uuidString
-            sections.append(ClipSection(id: sectionId, title: uniqueTitle(title, in: sections.map(\.title)), position: sectionIndex, updatedAt: now, deletedAt: nil))
+            let sectionId: String
+            if let existingIndex = sections.firstIndex(where: { $0.title == title && !usedSectionIds.contains($0.id) }) {
+                sections[existingIndex].position = sectionIndex
+                sections[existingIndex].updatedAt = now
+                sections[existingIndex].deletedAt = nil
+                sectionId = sections[existingIndex].id
+            } else {
+                let newSection = ClipSection(
+                    id: UUID().uuidString,
+                    title: uniqueTitle(title, in: sections.map(\.title)),
+                    position: sectionIndex,
+                    updatedAt: now,
+                    deletedAt: nil
+                )
+                sections.append(newSection)
+                sectionId = newSection.id
+            }
+            usedSectionIds.insert(sectionId)
 
             let groupedItems = customOrder
                 .compactMap { customGroups[$0] }
@@ -494,17 +506,53 @@ extension ClipBaseSnapshot {
                 }
             let importedItems = (regularItemsBySection[title] ?? []) + groupedItems
             for (itemIndex, item) in importedItems.enumerated() {
-                items.append(ClipItem(
-                    id: UUID().uuidString,
+                desiredItems.append((
                     sectionId: sectionId,
                     name: item.name,
                     content: item.content,
                     metadata: item.metadata,
-                    position: itemIndex,
-                    updatedAt: now,
-                    deletedAt: nil
+                    position: itemIndex
                 ))
             }
+        }
+
+        for index in sections.indices where sections[index].deletedAt == nil && !usedSectionIds.contains(sections[index].id) {
+            if sections[index].title != "其它" {
+                sections[index].deletedAt = now
+            }
+        }
+
+        var usedItemIds = Set<String>()
+        for item in desiredItems {
+            if let existingIndex = items.firstIndex(where: {
+                $0.sectionId == item.sectionId &&
+                $0.name == item.name &&
+                !usedItemIds.contains($0.id)
+            }) {
+                items[existingIndex].content = item.content
+                items[existingIndex].metadata = item.metadata
+                items[existingIndex].position = item.position
+                items[existingIndex].updatedAt = now
+                items[existingIndex].deletedAt = nil
+                usedItemIds.insert(items[existingIndex].id)
+            } else {
+                let newItem = ClipItem(
+                    id: UUID().uuidString,
+                    sectionId: item.sectionId,
+                    name: item.name,
+                    content: item.content,
+                    metadata: item.metadata,
+                    position: item.position,
+                    updatedAt: now,
+                    deletedAt: nil
+                )
+                items.append(newItem)
+                usedItemIds.insert(newItem.id)
+            }
+        }
+
+        for index in items.indices where items[index].deletedAt == nil && !usedItemIds.contains(items[index].id) {
+            items[index].deletedAt = now
         }
     }
 

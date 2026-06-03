@@ -566,9 +566,6 @@ export class ClipDatabase {
   replaceRows(rows) {
     this.db.exec("BEGIN");
     try {
-      this.db.prepare("DELETE FROM items").run();
-      this.db.prepare("DELETE FROM sections").run();
-
       const sectionOrder = [];
       const regularItemsBySection = new Map();
       const customGroups = new Map();
@@ -603,14 +600,24 @@ export class ClipDatabase {
         regularItemsBySection.set(row.section, list);
       }
 
+      const now = Date.now();
+      const usedSectionIds = new Set();
+      const desiredItems = [];
+
       sectionOrder.forEach((title, sectionIndex) => {
-        const section = {
+        const existingSection = this.db.prepare("SELECT id FROM sections WHERE title = ?").get(title);
+        const section = existingSection || {
           id: randomUUID(),
           title: this.uniqueTitle("sections", "title", title)
         };
-        const now = Date.now();
-        this.db.prepare("INSERT INTO sections (id, title, position, updated_at, deleted_at) VALUES (?, ?, ?, ?, NULL)")
-          .run(section.id, section.title, sectionIndex, now);
+        if (existingSection) {
+          this.db.prepare("UPDATE sections SET position = ?, updated_at = ?, deleted_at = NULL WHERE id = ?")
+            .run(sectionIndex, now, section.id);
+        } else {
+          this.db.prepare("INSERT INTO sections (id, title, position, updated_at, deleted_at) VALUES (?, ?, ?, ?, NULL)")
+            .run(section.id, section.title, sectionIndex, now);
+        }
+        usedSectionIds.add(section.id);
 
         const groupedItems = customOrder
           .map((key) => customGroups.get(key))
@@ -625,12 +632,58 @@ export class ClipDatabase {
         const items = [...(regularItemsBySection.get(title) || []), ...groupedItems];
 
         items.forEach((item, itemIndex) => {
+          desiredItems.push({
+            sectionId: section.id,
+            name: item.name,
+            content: item.content,
+            metadata: item.metadata,
+            position: itemIndex
+          });
+        });
+      });
+
+      for (const section of this.db.prepare("SELECT id, title FROM sections WHERE deleted_at IS NULL").all()) {
+        if (!usedSectionIds.has(section.id) && section.title !== "其它") {
+          this.db.prepare("UPDATE sections SET deleted_at = ? WHERE id = ?").run(now, section.id);
+        }
+      }
+
+      const existingItems = this.db.prepare(`
+        SELECT id, section_id AS sectionId, name
+        FROM items
+        ORDER BY CASE WHEN deleted_at IS NULL THEN 0 ELSE 1 END, position ASC, rowid ASC
+      `).all();
+      const usedItemIds = new Set();
+
+      for (const item of desiredItems) {
+        const existingItem = existingItems.find((entry) =>
+          entry.sectionId === item.sectionId &&
+          entry.name === item.name &&
+          !usedItemIds.has(entry.id)
+        );
+
+        if (existingItem) {
+          this.db.prepare(`
+            UPDATE items
+            SET content = ?, metadata = ?, position = ?, updated_at = ?, deleted_at = NULL
+            WHERE id = ?
+          `).run(item.content, item.metadata, item.position, now, existingItem.id);
+          usedItemIds.add(existingItem.id);
+        } else {
+          const itemId = randomUUID();
           this.db.prepare(`
             INSERT INTO items (id, section_id, name, content, metadata, position, updated_at, deleted_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, NULL)
-          `).run(randomUUID(), section.id, item.name, item.content, item.metadata, itemIndex, now);
-        });
-      });
+          `).run(itemId, item.sectionId, item.name, item.content, item.metadata, item.position, now);
+          usedItemIds.add(itemId);
+        }
+      }
+
+      for (const item of this.db.prepare("SELECT id FROM items WHERE deleted_at IS NULL").all()) {
+        if (!usedItemIds.has(item.id)) {
+          this.db.prepare("UPDATE items SET deleted_at = ? WHERE id = ?").run(now, item.id);
+        }
+      }
 
       this.db.exec("COMMIT");
     } catch (error) {

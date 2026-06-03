@@ -283,7 +283,8 @@ final class LocalRepository {
         try persist()
     }
 
-    func applyRemoteChanges(_ changes: SyncChanges, serverTime: Int64) throws {
+    func applyRemoteChanges(_ changes: SyncChanges, serverTime: Int64, preserveLastSyncAt: Bool = false) throws {
+        let previousLastSyncAt = snapshot.lastSyncAt
         for section in changes.sections {
             applyRemoteSection(section)
         }
@@ -296,7 +297,7 @@ final class LocalRepository {
         for document in changes.memoDocuments {
             applyRemoteMemoDocument(document)
         }
-        snapshot.lastSyncAt = serverTime
+        snapshot.lastSyncAt = preserveLastSyncAt ? previousLastSyncAt : serverTime
         try persist()
     }
 

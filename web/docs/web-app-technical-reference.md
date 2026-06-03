@@ -664,6 +664,8 @@ Authorization: Bearer SESSION_TOKEN
 Content-Type: application/json
 ```
 
+`POST /api/sync` 會先驗證 `since`、四個 changes bucket，以及每筆 record 的必填欄位與型別。任一筆 record 不合法時回傳 `400`，且不套用該次 request 的任何變更。
+
 更多細節見 [sync-api.md](../../docs/sync-api.md)。
 
 ## 6. Sync Model

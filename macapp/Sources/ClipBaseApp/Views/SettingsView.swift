@@ -9,7 +9,7 @@ struct SettingsView: View {
             Form {
                 TextField("API Base URL", text: $apiBaseURL)
                 TextField("預設帳號", text: $username)
-                Text("Bearer token 儲存在 UserDefaults，適合個人工具與開發用途。")
+                Text("Bearer token 儲存在系統 Keychain。")
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }

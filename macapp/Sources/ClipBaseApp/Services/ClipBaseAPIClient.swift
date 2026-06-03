@@ -1,6 +1,8 @@
 import Foundation
 
 struct ClipBaseAPIClient {
+    private let session: URLSession
+
     struct LoginResponse: Decodable {
         let username: String
         let token: String?
@@ -9,6 +11,10 @@ struct ClipBaseAPIClient {
     struct SyncResponse: Decodable {
         let serverTime: Int64
         let changes: SyncChanges
+    }
+
+    init(session: URLSession = .shared) {
+        self.session = session
     }
 
     func login(baseURL: String, username: String, password: String) async throws -> LoginResponse {
@@ -31,7 +37,7 @@ struct ClipBaseAPIClient {
             return
         }
         request.httpBody = Data()
-        _ = try? await URLSession.shared.data(for: request)
+        _ = try? await session.data(for: request)
     }
 
     func pullSync(baseURL: String, token: String, since: Int64) async throws -> SyncResponse {
@@ -78,7 +84,7 @@ struct ClipBaseAPIClient {
     }
 
     private func perform<T: Decodable>(_ request: URLRequest) async throws -> T {
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await session.data(for: request)
         guard let httpResponse = response as? HTTPURLResponse else {
             throw APIError.message("伺服器回應格式無效")
         }

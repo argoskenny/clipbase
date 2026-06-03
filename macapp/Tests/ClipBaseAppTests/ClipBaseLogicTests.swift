@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 @testable import ClipBaseApp
 
@@ -143,9 +144,361 @@ final class ClipBaseLogicTests: XCTestCase {
         ])
     }
 
+    func testKeychainTokenStoreMigratesLegacyDefaultsTokenAndClearsIt() throws {
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "ClipBaseTests.\(UUID().uuidString)"))
+        defaults.set(" legacy-token ", forKey: KeychainTokenStore.legacyDefaultsKey)
+        let backend = InMemoryKeychainTokenBackend()
+        let store = KeychainTokenStore(
+            service: "ClipBaseTests.\(UUID().uuidString)",
+            account: "session-token",
+            defaults: defaults,
+            backend: backend
+        )
+
+        XCTAssertEqual(try store.loadToken(), "legacy-token")
+        XCTAssertNil(defaults.string(forKey: KeychainTokenStore.legacyDefaultsKey))
+        XCTAssertEqual(try backend.read(service: store.service, account: store.account), "legacy-token")
+
+        try store.deleteToken()
+
+        XCTAssertNil(try store.loadToken())
+    }
+
+    @MainActor
+    func testPendingSyncSendsLocalChangesMadeDuringInFlightSync() async throws {
+        defer {
+            ControlledURLProtocol.requestHandler = nil
+        }
+
+        let repository = LocalRepository(fileURL: temporaryStoreURL())
+        let section = try repository.createSection(title: "Original", now: 1_000)
+        try repository.applyRemoteChanges(.empty, serverTime: 2_000)
+
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "ClipBaseTests.\(UUID().uuidString)"))
+        defaults.set("https://clipbase.test", forKey: "clipbase.apiBaseURL")
+        let tokenStore = InMemoryTokenStore(token: "session-token")
+        let requestController = SyncRequestController()
+        ControlledURLProtocol.requestHandler = requestController.handle
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [ControlledURLProtocol.self]
+
+        let store = ClipBaseStore(
+            repository: repository,
+            tokenStore: tokenStore,
+            apiClient: ClipBaseAPIClient(session: URLSession(configuration: configuration)),
+            defaults: defaults
+        )
+
+        let syncTask = Task { await store.syncNow(showSuccess: false) }
+        let firstRequestStarted = await requestController.waitForFirstRequest()
+        XCTAssertTrue(firstRequestStarted, "First sync request was not started")
+
+        store.updateSection(id: section.id, title: "Edited during sync")
+        await store.syncNow(showSuccess: false)
+
+        requestController.resumeFirstRequest()
+        let secondRequestStarted = await requestController.waitForSecondRequest()
+        XCTAssertTrue(secondRequestStarted, "Pending sync did not run")
+
+        let secondRequest = try XCTUnwrap(requestController.secondRequest)
+        XCTAssertEqual(secondRequest.httpMethod, "POST")
+        let body = try XCTUnwrap(secondRequest.httpBody ?? secondRequest.httpBodyStream.map(Self.readStream))
+        let payload = try JSONDecoder.clipBase.decode(SyncRequestPayload.self, from: body)
+        XCTAssertEqual(payload.changes.sections.map(\.title), ["Edited during sync"])
+
+        await syncTask.value
+    }
+
+    @MainActor
+    func testStaleUnauthorizedSyncDoesNotClearNewLoginToken() async throws {
+        defer {
+            AsyncControlledURLProtocol.requestHandler = nil
+        }
+
+        let repository = LocalRepository(fileURL: temporaryStoreURL())
+        try repository.applyRemoteChanges(.empty, serverTime: 2_000)
+
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: "ClipBaseTests.\(UUID().uuidString)"))
+        defaults.set("https://clipbase.test", forKey: "clipbase.apiBaseURL")
+        let tokenStore = InMemoryTokenStore(token: "old-token")
+        let requestController = StaleUnauthorizedSyncController()
+        AsyncControlledURLProtocol.requestHandler = requestController.handle
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [AsyncControlledURLProtocol.self]
+        configuration.httpMaximumConnectionsPerHost = 4
+
+        let store = ClipBaseStore(
+            repository: repository,
+            tokenStore: tokenStore,
+            apiClient: ClipBaseAPIClient(session: URLSession(configuration: configuration)),
+            defaults: defaults
+        )
+
+        let syncTask = Task { await store.syncNow(showSuccess: false) }
+        let initialSyncStarted = await requestController.waitForRequestCount(1)
+        XCTAssertTrue(initialSyncStarted, "Initial sync request was not started")
+
+        await store.logout()
+        await store.login(baseURL: "https://clipbase.test", username: "admin", password: "password")
+
+        requestController.resumeInitialSync()
+        await syncTask.value
+
+        let newTokenSyncStarted = await requestController.waitForRequestCount(4)
+        XCTAssertTrue(newTokenSyncStarted, "Pending sync with the new token did not run")
+        XCTAssertEqual(tokenStore.loadToken(), "new-token")
+        XCTAssertEqual(store.authState, .authenticated(username: "admin"))
+        XCTAssertNil(store.alert)
+        XCTAssertEqual(requestController.latestSyncAuthorization, "Bearer new-token")
+    }
+
+    private static func readStream(_ stream: InputStream) -> Data {
+        stream.open()
+        defer { stream.close() }
+        var data = Data()
+        let bufferSize = 1024
+        var buffer = [UInt8](repeating: 0, count: bufferSize)
+        while stream.hasBytesAvailable {
+            let count = stream.read(&buffer, maxLength: bufferSize)
+            if count > 0 {
+                data.append(buffer, count: count)
+            } else {
+                break
+            }
+        }
+        return data
+    }
+
     private func temporaryStoreURL() -> URL {
         FileManager.default.temporaryDirectory
             .appendingPathComponent(UUID().uuidString, isDirectory: true)
             .appendingPathComponent("clipbase-state.json")
+    }
+}
+
+private final class SyncRequestController {
+    private let lock = NSLock()
+    private let firstRequestStarted = DispatchSemaphore(value: 0)
+    private let firstRequestCanReturn = DispatchSemaphore(value: 0)
+    private let secondRequestStarted = DispatchSemaphore(value: 0)
+    private var requestCount = 0
+    private var _secondRequest: URLRequest?
+
+    var secondRequest: URLRequest? {
+        lock.withLock { _secondRequest }
+    }
+
+    func handle(_ request: URLRequest) -> (HTTPURLResponse, Data) {
+        let currentCount = lock.withLock {
+            requestCount += 1
+            return requestCount
+        }
+
+        if currentCount == 1 {
+            firstRequestStarted.signal()
+            _ = firstRequestCanReturn.wait(timeout: .now() + 5)
+        } else if currentCount == 2 {
+            lock.withLock {
+                _secondRequest = request
+            }
+            secondRequestStarted.signal()
+        }
+
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        let body = Data(#"{"serverTime":9999999999999,"changes":{"sections":[],"items":[],"optimizers":[],"memoDocuments":[]}}"#.utf8)
+        return (response, body)
+    }
+
+    func waitForFirstRequest() async -> Bool {
+        await waitForRequestCount(1)
+    }
+
+    func resumeFirstRequest() {
+        firstRequestCanReturn.signal()
+    }
+
+    func waitForSecondRequest() async -> Bool {
+        await waitForRequestCount(2)
+    }
+
+    private func waitForRequestCount(_ expected: Int) async -> Bool {
+        for _ in 0..<100 {
+            if lock.withLock({ requestCount >= expected }) {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return false
+    }
+}
+
+private final class StaleUnauthorizedSyncController {
+    private let lock = NSLock()
+    private let initialSyncCanReturn = DispatchSemaphore(value: 0)
+    private var requestCount = 0
+    private var _latestSyncAuthorization: String?
+
+    var latestSyncAuthorization: String? {
+        lock.withLock { _latestSyncAuthorization }
+    }
+
+    func handle(_ request: URLRequest) -> (HTTPURLResponse, Data) {
+        let currentCount = lock.withLock {
+            requestCount += 1
+            return requestCount
+        }
+
+        if currentCount == 1 {
+            _ = initialSyncCanReturn.wait(timeout: .now() + 5)
+            return response(for: request, statusCode: 401, body: #"{"error":"請先登入"}"#)
+        }
+
+        if request.url?.path == "/api/login" {
+            return response(for: request, body: #"{"username":"admin","token":"new-token"}"#)
+        }
+
+        if request.url?.path == "/api/sync" {
+            lock.withLock {
+                _latestSyncAuthorization = request.value(forHTTPHeaderField: "Authorization")
+            }
+            return response(
+                for: request,
+                body: #"{"serverTime":9999999999999,"changes":{"sections":[],"items":[],"optimizers":[],"memoDocuments":[]}}"#
+            )
+        }
+
+        return response(for: request, body: #"{"ok":true}"#)
+    }
+
+    func resumeInitialSync() {
+        initialSyncCanReturn.signal()
+    }
+
+    func waitForRequestCount(_ expected: Int) async -> Bool {
+        for _ in 0..<100 {
+            if lock.withLock({ requestCount >= expected }) {
+                return true
+            }
+            try? await Task.sleep(nanoseconds: 20_000_000)
+        }
+        return false
+    }
+
+    private func response(for request: URLRequest, statusCode: Int = 200, body: String) -> (HTTPURLResponse, Data) {
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: statusCode,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        return (response, Data(body.utf8))
+    }
+}
+
+private final class ControlledURLProtocol: URLProtocol {
+    static var requestHandler: ((URLRequest) -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        request.url?.host == "clipbase.test"
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        guard let requestHandler = Self.requestHandler else {
+            client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+            return
+        }
+        let (response, data) = requestHandler(request)
+        client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+        client?.urlProtocol(self, didLoad: data)
+        client?.urlProtocolDidFinishLoading(self)
+    }
+
+    override func stopLoading() {
+    }
+}
+
+private final class AsyncControlledURLProtocol: URLProtocol {
+    static var requestHandler: ((URLRequest) -> (HTTPURLResponse, Data))?
+
+    override class func canInit(with request: URLRequest) -> Bool {
+        request.url?.host == "clipbase.test"
+    }
+
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest {
+        request
+    }
+
+    override func startLoading() {
+        let request = request
+        DispatchQueue.global().async { [weak self] in
+            guard let self else {
+                return
+            }
+            guard let requestHandler = Self.requestHandler else {
+                self.client?.urlProtocol(self, didFailWithError: URLError(.badServerResponse))
+                return
+            }
+
+            let (response, data) = requestHandler(request)
+            self.client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            self.client?.urlProtocol(self, didLoad: data)
+            self.client?.urlProtocolDidFinishLoading(self)
+        }
+    }
+
+    override func stopLoading() {
+    }
+}
+
+private struct SyncRequestPayload: Decodable {
+    let changes: SyncChanges
+}
+
+private final class InMemoryTokenStore: TokenStoring {
+    private var token: String?
+
+    init(token: String? = nil) {
+        self.token = token
+    }
+
+    func loadToken() -> String? {
+        token
+    }
+
+    func saveToken(_ token: String) {
+        self.token = token
+    }
+
+    func deleteToken() {
+        token = nil
+    }
+}
+
+private final class InMemoryKeychainTokenBackend: KeychainTokenBackend {
+    private var tokens: [String: String] = [:]
+
+    func read(service: String, account: String) throws -> String? {
+        tokens[key(service: service, account: account)]
+    }
+
+    func save(_ token: String, service: String, account: String) throws {
+        tokens[key(service: service, account: account)] = token
+    }
+
+    func delete(service: String, account: String) throws {
+        tokens.removeValue(forKey: key(service: service, account: account))
+    }
+
+    private func key(service: String, account: String) -> String {
+        "\(service)\u{0}\(account)"
     }
 }
