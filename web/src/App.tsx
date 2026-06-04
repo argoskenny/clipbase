@@ -8,10 +8,12 @@ import {
   FileUp,
   ListPlus,
   LogOut,
+  Moon,
   Plus,
   Save,
   Search,
   Sparkles,
+  Sun,
   Trash2,
   X
 } from "lucide-react";
@@ -27,6 +29,7 @@ import {
   type MemoReaderBlock,
   type MemoReaderInline
 } from "./memoDocuments";
+import { applyTheme, getInitialTheme, type ThemeMode } from "./theme";
 
 type ClipItem = {
   id: string;
@@ -70,6 +73,10 @@ const emptyState: AppState = {
 };
 
 export function App() {
+  const [theme, setTheme] = useState<ThemeMode>(() => getInitialTheme(
+    typeof window === "undefined" ? null : window.localStorage,
+    () => typeof window !== "undefined" && window.matchMedia("(prefers-color-scheme: dark)").matches
+  ));
   const [session, setSession] = useState<{ authenticated: boolean; username: string | null } | null>(null);
   const [state, setState] = useState<AppState>(emptyState);
   const [activeTab, setActiveTab] = useState<ActiveTab>("clips");
@@ -77,6 +84,10 @@ export function App() {
   const [selectedOptimizerId, setSelectedOptimizerId] = useState<string | null>(null);
   const [selectedMemoDocumentId, setSelectedMemoDocumentId] = useState<string | null>(null);
   const [notice, setNotice] = useState("");
+
+  useEffect(() => {
+    applyTheme(theme, document.documentElement, window.localStorage);
+  }, [theme]);
 
   useEffect(() => {
     void api<{ authenticated: boolean; username: string | null }>("/api/session", { skipAuthRedirect: true })
@@ -141,6 +152,10 @@ export function App() {
     window.setTimeout(() => setNotice(""), 1600);
   }
 
+  function toggleTheme() {
+    setTheme((currentTheme) => currentTheme === "dark" ? "light" : "dark");
+  }
+
   if (session === null) {
     return <div className="loading">載入中...</div>;
   }
@@ -167,6 +182,16 @@ export function App() {
         <div className="topbar-actions">
           {notice && <span className="notice">{notice}</span>}
           <span className="user-chip">{session.username}</span>
+          <button
+            className="icon-button theme-toggle"
+            onClick={toggleTheme}
+            title={theme === "dark" ? "切換為淺色模式" : "切換為深色模式"}
+            aria-label={theme === "dark" ? "切換為淺色模式" : "切換為深色模式"}
+            aria-pressed={theme === "dark"}
+          >
+            {theme === "dark" ? <Sun size={18} /> : <Moon size={18} />}
+            <span>{theme === "dark" ? "淺色" : "深色"}</span>
+          </button>
           <button className="icon-button" onClick={handleLogout} title="登出">
             <LogOut size={18} />
             <span>登出</span>
