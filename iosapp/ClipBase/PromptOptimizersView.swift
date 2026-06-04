@@ -22,7 +22,7 @@ struct PromptOptimizersView: View {
         if let selectedOptimizerId, let optimizer = model.snapshot.activeOptimizers.first(where: { $0.id == selectedOptimizerId }) {
             return optimizer
         }
-        return model.snapshot.activeOptimizers.first
+        return nil
     }
 
     private var combinedPrompt: String {
@@ -139,7 +139,11 @@ struct PromptOptimizersView: View {
                         }
                     }
                 } else {
-                    EmptyStateView(title: "尚無優化器", message: "新增固定前綴或後綴模板後即可合併並複製提示詞。", systemImage: "wand.and.stars")
+                    EmptyStateView(
+                        title: model.snapshot.activeOptimizers.isEmpty ? "尚無優化器" : "選擇優化器",
+                        message: model.snapshot.activeOptimizers.isEmpty ? "新增固定前綴或後綴模板後即可合併並複製提示詞。" : "從左側優化器列表選擇一個項目後，查看、合併與複製提示詞。",
+                        systemImage: "wand.and.stars"
+                    )
                         .navigationTitle("提示詞")
                         .toolbar {
                             Button {
@@ -151,9 +155,8 @@ struct PromptOptimizersView: View {
                 }
             }
         }
-        .onAppear(perform: ensureSelection)
         .onChange(of: model.snapshot.activeOptimizers) {
-            ensureSelection()
+            clearInvalidSelection()
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
@@ -171,11 +174,10 @@ struct PromptOptimizersView: View {
         }
     }
 
-    private func ensureSelection() {
-        if let selectedOptimizerId, model.snapshot.activeOptimizers.contains(where: { $0.id == selectedOptimizerId }) {
-            return
+    private func clearInvalidSelection() {
+        if let selectedOptimizerId, !model.snapshot.activeOptimizers.contains(where: { $0.id == selectedOptimizerId }) {
+            self.selectedOptimizerId = nil
         }
-        selectedOptimizerId = model.snapshot.activeOptimizers.first?.id
     }
 }
 

@@ -206,6 +206,20 @@ final class ClipBaseLogicTests: XCTestCase {
     }
 
     @MainActor
+    func testCopyDoesNotShowBlockingAlert() throws {
+        let store = ClipBaseStore(
+            repository: LocalRepository(fileURL: temporaryStoreURL()),
+            defaults: try XCTUnwrap(UserDefaults(suiteName: "ClipBaseTests.\(UUID().uuidString)"))
+        )
+
+        store.copy("hello")
+
+        XCTAssertNil(store.alert)
+        XCTAssertEqual(store.toast?.title, "已複製")
+        XCTAssertEqual(store.toast?.message, "內容已放入剪貼簿")
+    }
+
+    @MainActor
     func testLogoutResetsPreviousLoginData() async throws {
         defer {
             ControlledURLProtocol.requestHandler = nil

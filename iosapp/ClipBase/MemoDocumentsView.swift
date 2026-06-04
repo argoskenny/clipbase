@@ -22,7 +22,7 @@ struct MemoDocumentsView: View {
         if let selectedDocumentId, let document = model.snapshot.activeMemoDocuments.first(where: { $0.id == selectedDocumentId }) {
             return document
         }
-        return model.snapshot.activeMemoDocuments.first
+        return nil
     }
 
     var body: some View {
@@ -87,7 +87,11 @@ struct MemoDocumentsView: View {
                             }
                         }
                 } else {
-                    EmptyStateView(title: "尚無文件", message: "建立長篇備忘，並把重要文字片段標記為可點擊複製。", systemImage: "doc.text")
+                    EmptyStateView(
+                        title: model.snapshot.activeMemoDocuments.isEmpty ? "尚無文件" : "選擇文件",
+                        message: model.snapshot.activeMemoDocuments.isEmpty ? "建立長篇備忘，並把重要文字片段標記為可點擊複製。" : "從左側文件列表選擇一個文件後，閱讀、編輯或複製標記文字。",
+                        systemImage: "doc.text"
+                    )
                         .navigationTitle("備忘")
                         .toolbar {
                             Button {
@@ -99,9 +103,8 @@ struct MemoDocumentsView: View {
                 }
             }
         }
-        .onAppear(perform: ensureSelection)
         .onChange(of: model.snapshot.activeMemoDocuments) {
-            ensureSelection()
+            clearInvalidSelection()
         }
         .sheet(item: $activeSheet) { sheet in
             switch sheet {
@@ -119,11 +122,10 @@ struct MemoDocumentsView: View {
         }
     }
 
-    private func ensureSelection() {
-        if let selectedDocumentId, model.snapshot.activeMemoDocuments.contains(where: { $0.id == selectedDocumentId }) {
-            return
+    private func clearInvalidSelection() {
+        if let selectedDocumentId, !model.snapshot.activeMemoDocuments.contains(where: { $0.id == selectedDocumentId }) {
+            self.selectedDocumentId = nil
         }
-        selectedDocumentId = model.snapshot.activeMemoDocuments.first?.id
     }
 
     private func paragraphCount(_ content: String) -> Int {
@@ -145,6 +147,7 @@ private enum MemoSheet: Identifiable {
 }
 
 private struct MemoReaderView: View {
+    @EnvironmentObject private var model: AppModel
     var document: MemoDocument
 
     var body: some View {
@@ -157,7 +160,9 @@ private struct MemoReaderView: View {
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
 
-                    CopyableMemoTextView(content: document.content, ranges: document.copyableRanges)
+                    CopyableMemoTextView(content: document.content, ranges: document.copyableRanges) {
+                        model.showNotice("內容已複製")
+                    }
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
             }
@@ -170,6 +175,7 @@ private struct MemoReaderView: View {
 private struct CopyableMemoTextView: UIViewRepresentable {
     var content: String
     var ranges: [CopyableRange]
+    var onCopied: () -> Void
 
     func makeUIView(context: Context) -> UITextView {
         let textView = UITextView()
@@ -189,11 +195,12 @@ private struct CopyableMemoTextView: UIViewRepresentable {
 
     func updateUIView(_ uiView: UITextView, context: Context) {
         context.coordinator.content = DomainRules.normalizeLineEndings(content)
+        context.coordinator.onCopied = onCopied
         uiView.attributedText = makeAttributedText()
     }
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(content: DomainRules.normalizeLineEndings(content))
+        Coordinator(content: DomainRules.normalizeLineEndings(content), onCopied: onCopied)
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: UITextView, context: Context) -> CGSize? {
@@ -238,9 +245,11 @@ private struct CopyableMemoTextView: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         var content: String
+        var onCopied: () -> Void
 
-        init(content: String) {
+        init(content: String, onCopied: @escaping () -> Void) {
             self.content = content
+            self.onCopied = onCopied
         }
 
         func textView(_ textView: UITextView, shouldInteractWith URL: URL, in characterRange: NSRange, interaction: UITextItemInteraction) -> Bool {
@@ -249,12 +258,14 @@ private struct CopyableMemoTextView: UIViewRepresentable {
                 return false
             }
             UIPasteboard.general.string = nsText.substring(with: characterRange)
+            onCopied()
             return false
         }
     }
 }
 
 private struct FlowParagraphView: View {
+    @EnvironmentObject private var model: AppModel
     var segments: [MemoTextSegment]
 
     var body: some View {
@@ -266,6 +277,7 @@ private struct FlowParagraphView: View {
                 ForEach(segments.filter(\.isCopyable)) { segment in
                     Button {
                         UIPasteboard.general.string = segment.text
+                        model.showNotice("內容已複製")
                     } label: {
                         Label(segment.text, systemImage: "doc.on.doc")
                     }
@@ -276,6 +288,7 @@ private struct FlowParagraphView: View {
                     ForEach(segments.filter(\.isCopyable)) { segment in
                         Button {
                             UIPasteboard.general.string = segment.text
+                            model.showNotice("內容已複製")
                         } label: {
                             Text(segment.text)
                                 .font(.callout.weight(.medium))

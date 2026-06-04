@@ -53,6 +53,7 @@ struct ContentView: View {
                     }
             }
         }
+        .dismissKeyboardOnTapOutsideInput()
     }
 }
 
@@ -164,6 +165,7 @@ struct DestructiveTrashButton: View {
 }
 
 struct CopyButton: View {
+    @EnvironmentObject private var model: AppModel
     var title: String = "複製"
     var text: String
     var onCopied: (() -> Void)?
@@ -171,6 +173,7 @@ struct CopyButton: View {
     var body: some View {
         Button {
             UIPasteboard.general.string = text
+            model.showNotice("內容已複製")
             onCopied?()
         } label: {
             Label(title, systemImage: "doc.on.doc")
@@ -191,6 +194,80 @@ struct LabeledTextEditor: View {
                 .frame(minHeight: minHeight)
                 .padding(6)
                 .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 8))
+        }
+    }
+}
+
+extension View {
+    func dismissKeyboardOnTapOutsideInput() -> some View {
+        background(KeyboardDismissTapInstaller())
+    }
+}
+
+private struct KeyboardDismissTapInstaller: UIViewRepresentable {
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> UIView {
+        UIView(frame: .zero)
+    }
+
+    func updateUIView(_ uiView: UIView, context: Context) {
+        DispatchQueue.main.async {
+            context.coordinator.installIfNeeded(from: uiView)
+        }
+    }
+
+    static func dismantleUIView(_ uiView: UIView, coordinator: Coordinator) {
+        coordinator.uninstall()
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        private weak var window: UIWindow?
+        private weak var recognizer: UITapGestureRecognizer?
+
+        func installIfNeeded(from view: UIView) {
+            guard let window = view.window, window !== self.window else {
+                return
+            }
+
+            uninstall()
+
+            let recognizer = UITapGestureRecognizer(target: self, action: #selector(dismissKeyboard))
+            recognizer.cancelsTouchesInView = false
+            recognizer.delegate = self
+            window.addGestureRecognizer(recognizer)
+
+            self.window = window
+            self.recognizer = recognizer
+        }
+
+        func uninstall() {
+            if let recognizer {
+                window?.removeGestureRecognizer(recognizer)
+            }
+            window = nil
+            recognizer = nil
+        }
+
+        @objc private func dismissKeyboard() {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
+            var view: UIView? = touch.view
+            while let current = view {
+                if current is UITextField || current is UITextView || current is UISearchBar {
+                    return false
+                }
+                view = current.superview
+            }
+            return true
+        }
+
+        func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer) -> Bool {
+            true
         }
     }
 }

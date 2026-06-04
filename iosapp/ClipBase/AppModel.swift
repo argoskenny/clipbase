@@ -253,6 +253,10 @@ final class AppModel: ObservableObject {
         notice = nil
     }
 
+    func showNotice(_ message: String) {
+        notice = message
+    }
+
     @discardableResult
     private func mutateAndSync(_ operation: (inout ClipBaseSnapshot) throws -> String) -> String? {
         do {

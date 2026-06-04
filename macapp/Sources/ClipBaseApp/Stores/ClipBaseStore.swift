@@ -19,6 +19,7 @@ final class ClipBaseStore: ObservableObject {
     @Published private(set) var lastSyncAt: Int64 = 0
     @Published private(set) var syncMessage = "尚未同步"
     @Published private(set) var isSyncing = false
+    @Published private(set) var toast: UserFacingToast?
     @Published var alert: UserFacingAlert?
 
     private let repository: LocalRepository
@@ -29,6 +30,7 @@ final class ClipBaseStore: ObservableObject {
     private var pendingSync = false
     private var localChangeGeneration: UInt64 = 0
     private var authGeneration: UInt64 = 0
+    private var toastDismissTask: Task<Void, Never>?
 
     init(
         repository: LocalRepository = LocalRepository(),
@@ -202,6 +204,9 @@ final class ClipBaseStore: ObservableObject {
         pendingSync = false
         isSyncing = false
         localChangeGeneration = 0
+        toastDismissTask?.cancel()
+        toastDismissTask = nil
+        toast = nil
         alert = nil
         syncMessage = "尚未同步"
 
@@ -306,7 +311,7 @@ final class ClipBaseStore: ObservableObject {
 
     func copy(_ text: String, notice: String = "已複製") {
         Clipboard.copy(text)
-        flash(title: notice, message: text.isEmpty ? "內容為空" : "內容已放入剪貼簿")
+        showToast(title: notice, message: text.isEmpty ? "內容為空" : "內容已放入剪貼簿")
     }
 
     func importCSV(from url: URL) {
@@ -425,6 +430,21 @@ final class ClipBaseStore: ObservableObject {
 
     private func flash(title: String, message: String) {
         alert = UserFacingAlert(title: title, message: message)
+    }
+
+    private func showToast(title: String, message: String) {
+        let nextToast = UserFacingToast(title: title, message: message)
+        toastDismissTask?.cancel()
+        toast = nextToast
+        toastDismissTask = Task { [weak self, toastID = nextToast.id] in
+            try? await Task.sleep(nanoseconds: 2_000_000_000)
+            guard !Task.isCancelled else { return }
+            await MainActor.run {
+                guard self?.toast?.id == toastID else { return }
+                self?.toast = nil
+                self?.toastDismissTask = nil
+            }
+        }
     }
 
     private func showError(_ error: Error, fallback: String) {

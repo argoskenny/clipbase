@@ -144,3 +144,9 @@ struct UserFacingAlert: Identifiable {
     let title: String
     let message: String
 }
+
+struct UserFacingToast: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
+}

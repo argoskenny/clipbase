@@ -20,6 +20,14 @@ struct ContentView: View {
         .task {
             await store.bootstrap()
         }
+        .overlay(alignment: .top) {
+            if let toast = store.toast {
+                ToastBanner(toast: toast)
+                    .padding(.top, 18)
+                    .transition(.move(edge: .top).combined(with: .opacity))
+            }
+        }
+        .animation(.easeInOut(duration: 0.18), value: store.toast?.id)
         .alert(item: $store.alert) { alert in
             Alert(
                 title: Text(alert.title),
@@ -100,6 +108,35 @@ struct ContentView: View {
         case .memos:
             return "\(store.memoDocuments.count) 份文件"
         }
+    }
+}
+
+private struct ToastBanner: View {
+    let toast: UserFacingToast
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(.green)
+                .font(.title3)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(toast.title)
+                    .font(.headline)
+                Text(toast.message)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 8, style: .continuous))
+        .overlay {
+            RoundedRectangle(cornerRadius: 8, style: .continuous)
+                .stroke(.quaternary)
+        }
+        .shadow(color: .black.opacity(0.16), radius: 14, y: 8)
+        .accessibilityElement(children: .combine)
     }
 }
 
