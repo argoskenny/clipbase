@@ -106,13 +106,8 @@ struct PromptOptimizersView: View {
                             LabeledTextEditor(title: "輸入內容", text: $input, minHeight: 160)
 
                             VStack(alignment: .leading, spacing: 8) {
-                                HStack {
-                                    Text("合併結果")
-                                        .font(.headline)
-                                    Spacer()
-                                    CopyButton(text: combinedPrompt)
-                                        .buttonStyle(.borderedProminent)
-                                }
+                                Text("合併結果")
+                                    .font(.headline)
                                 Text(combinedPrompt.isEmpty ? " " : combinedPrompt)
                                     .textSelection(.enabled)
                                     .frame(maxWidth: .infinity, alignment: .leading)
