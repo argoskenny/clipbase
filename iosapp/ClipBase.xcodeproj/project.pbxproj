@@ -22,6 +22,7 @@
 		100000000000000000000013 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000013 /* SettingsView.swift */; };
 		100000000000000000000014 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000014 /* Assets.xcassets */; };
 		100000000000000000000015 /* ClipBaseCoreTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000015 /* ClipBaseCoreTests.swift */; };
+		100000000000000000000016 /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 200000000000000000000018 /* LaunchScreen.storyboard */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -52,6 +53,7 @@
 		200000000000000000000015 /* ClipBaseCoreTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClipBaseCoreTests.swift; sourceTree = "<group>"; };
 		200000000000000000000016 /* ClipBase.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClipBase.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		200000000000000000000017 /* ClipBaseTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ClipBaseTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		200000000000000000000018 /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -97,6 +99,7 @@
 				200000000000000000000011 /* PromptOptimizersView.swift */,
 				200000000000000000000012 /* MemoDocumentsView.swift */,
 				200000000000000000000013 /* SettingsView.swift */,
+				200000000000000000000018 /* LaunchScreen.storyboard */,
 				200000000000000000000014 /* Assets.xcassets */,
 			);
 			path = ClipBase;
@@ -201,6 +204,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				100000000000000000000014 /* Assets.xcassets in Resources */,
+				100000000000000000000016 /* LaunchScreen.storyboard in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -382,7 +386,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -409,7 +413,7 @@
 				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.productivity";
 				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
 				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
-				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
