@@ -103,11 +103,8 @@ struct ClipLibraryView: View {
                             ForEach(filteredItems) { item in
                                 ClipItemRow(
                                     item: item,
-                                    sections: sections,
-                                    currentSectionId: section.id,
-                                    onMove: { destinationId in
-                                        model.moveItem(id: item.id, to: destinationId)
-                                        selectedSectionId = destinationId
+                                    onMove: {
+                                        activeSheet = .moveItem(item)
                                     },
                                     onEdit: {
                                         activeSheet = .editItem(item)
@@ -192,6 +189,11 @@ struct ClipLibraryView: View {
                     model.updateItem(id: item.id, sectionId: destinationId, name: name, content: content)
                     selectedSectionId = destinationId
                 }
+            case .moveItem(let item):
+                MoveItemView(title: "移動項目", sections: sections, currentSectionId: item.sectionId) { destinationId in
+                    model.moveItem(id: item.id, to: destinationId)
+                    selectedSectionId = destinationId
+                }
             }
         }
         .alert("刪除分類？", isPresented: Binding(
@@ -253,6 +255,7 @@ private enum ClipSheet: Identifiable {
     case editSection(ClipSection)
     case newItem(String)
     case editItem(ClipItem)
+    case moveItem(ClipItem)
 
     var id: String {
         switch self {
@@ -264,72 +267,90 @@ private enum ClipSheet: Identifiable {
             return "new-item-\(sectionId)"
         case .editItem(let item):
             return "edit-item-\(item.id)"
+        case .moveItem(let item):
+            return "move-item-\(item.id)"
         }
     }
 }
 
 private struct ClipItemRow: View {
     var item: ClipItem
-    var sections: [ClipSection]
-    var currentSectionId: String
-    var onMove: (String) -> Void
+    var onMove: () -> Void
     var onEdit: () -> Void
     var onDelete: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(item.name)
-                        .font(.headline)
-                    if let metadata = item.metadata {
-                        Text(metadata)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(item.content)
+                    .font(.body.weight(.semibold))
+                    .foregroundStyle(.primary)
+                    .lineLimit(3)
+                    .textSelection(.enabled)
+
+                Text(item.name)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(2)
+
+                if let metadata = item.metadata {
+                    Text(metadata)
+                        .font(.caption2)
+                        .foregroundStyle(.tertiary)
+                        .lineLimit(1)
                 }
-                Spacer()
-                CopyButton(text: item.content)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
             }
+            .frame(maxWidth: .infinity, alignment: .leading)
 
-            Text(item.content)
-                .font(.body)
-                .foregroundStyle(.primary)
-                .textSelection(.enabled)
-                .lineLimit(4)
-
-            HStack {
-                Menu {
-                    ForEach(sections) { section in
-                        Button(section.title) {
-                            onMove(section.id)
-                        }
-                        .disabled(section.id == currentSectionId)
-                    }
-                } label: {
-                    Label("移動", systemImage: "folder")
-                }
+            CopyButton(text: item.content)
+                .labelStyle(.iconOnly)
                 .buttonStyle(.bordered)
-                .controlSize(.small)
+                .controlSize(.regular)
+                .accessibilityLabel("複製 \(item.name)")
+        }
+        .padding(.vertical, 6)
+        .contentShape(Rectangle())
+        .swipeActions(edge: .leading, allowsFullSwipe: false) {
+            Button {
+                onMove()
+            } label: {
+                Label("移動", systemImage: "folder")
+            }
+            .tint(.indigo)
 
-                Button {
-                    onEdit()
-                } label: {
-                    Label("編輯", systemImage: "pencil")
-                }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
-
-                Spacer()
-
-                DestructiveTrashButton(title: "刪除", action: onDelete)
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
+            Button {
+                onEdit()
+            } label: {
+                Label("編輯", systemImage: "pencil")
+            }
+            .tint(.blue)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: false) {
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Label("刪除", systemImage: "trash")
             }
         }
-        .padding(.vertical, 4)
+        .contextMenu {
+            Button {
+                onEdit()
+            } label: {
+                Label("編輯", systemImage: "pencil")
+            }
+
+            Button {
+                onMove()
+            } label: {
+                Label("移動", systemImage: "folder")
+            }
+
+            Button(role: .destructive) {
+                onDelete()
+            } label: {
+                Label("刪除", systemImage: "trash")
+            }
+        }
     }
 }
 
@@ -421,6 +442,48 @@ private struct ItemEditorView: View {
             sectionId = initialSectionId
             name = item?.name ?? ""
             content = item?.content ?? ""
+        }
+    }
+}
+
+private struct MoveItemView: View {
+    @Environment(\.dismiss) private var dismiss
+    var title: String
+    var sections: [ClipSection]
+    var currentSectionId: String
+    var onMove: (String) -> Void
+
+    @State private var destinationSectionId = ""
+
+    var body: some View {
+        NavigationStack {
+            Form {
+                Section("目的分類") {
+                    Picker("分類", selection: $destinationSectionId) {
+                        ForEach(sections) { section in
+                            Text(section.title).tag(section.id)
+                        }
+                    }
+                }
+            }
+            .navigationTitle(title)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消") {
+                        dismiss()
+                    }
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("移動") {
+                        onMove(destinationSectionId)
+                        dismiss()
+                    }
+                    .disabled(destinationSectionId.isEmpty || destinationSectionId == currentSectionId)
+                }
+            }
+        }
+        .onAppear {
+            destinationSectionId = currentSectionId
         }
     }
 }
